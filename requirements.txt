@@ -1,0 +1,17 @@
+# Smart Barcode Nutrition Scanner - Python Dependencies
+# Authors: Simarpreet Singh, Param Patel, Allister Mcgregor
+
+# Core dependencies
+opencv-python==4.8.1.78
+Pillow==10.1.0
+pyzbar==0.1.9
+requests==2.31.0
+numpy==1.24.3
+
+# Additional libraries for Raspberry Pi camera (optional)
+# picamera2  # Uncomment if using Raspberry Pi Camera Module
+
+# Note: On Raspberry Pi, you may need to install system dependencies:
+# sudo apt-get update
+# sudo apt-get install -y python3-opencv python3-pil python3-pil.imagetk
+# sudo apt-get install -y libzbar0 libzbar-dev

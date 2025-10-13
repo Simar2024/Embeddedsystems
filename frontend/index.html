@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Barcode Nutrition Scanner</title>
+    <title>Smart Barcode Nutrition Scanner - ENSE810</title>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
     <style>
         /* Keep all your existing CSS as-is */
         * {
@@ -336,6 +337,91 @@
             margin-bottom: 20px;
             opacity: 0.5;
         }
+
+        /* Camera Scanner Styles */
+        #camera-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #camera-modal.active {
+            display: flex;
+        }
+
+        .camera-container {
+            position: relative;
+            max-width: 640px;
+            width: 90%;
+        }
+
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            height: 480px;
+            border: 3px solid #fff;
+            background: #000;
+        }
+
+        #scanner-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #scanner-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .camera-controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .camera-info {
+            color: white;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: #00ff00;
+            animation: scan 2s infinite;
+            z-index: 10;
+        }
+
+        @keyframes scan {
+            0%, 100% { top: 10%; }
+            50% { top: 90%; }
+        }
+
+        .close-camera {
+            background: white;
+            color: black;
+            padding: 12px 30px;
+            border: 2px solid white;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-camera:hover {
+            background: black;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -377,6 +463,21 @@
                 <div id="recentList">
                     <p style="color: #6c757d; text-align: center;">No recent scans yet</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Scanner Modal -->
+    <div id="camera-modal">
+        <div class="camera-container">
+            <div id="scanner-container">
+                <div class="scan-line"></div>
+            </div>
+            <div class="camera-info" id="camera-status">
+                📷 Position barcode in front of camera
+            </div>
+            <div class="camera-controls">
+                <button class="close-camera" onclick="stopCamera()">✕ Close Camera</button>
             </div>
         </div>
     </div>
@@ -581,8 +682,79 @@
             scanBarcode();
         }
 
+        let cameraActive = false;
+        let lastScannedCode = null;
+
         function startCamera() {
-            showAlert('Camera scanning feature will be integrated with OpenCV backend', 'success');
+            const modal = document.getElementById('camera-modal');
+            modal.classList.add('active');
+            cameraActive = true;
+            
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner-container'),
+                    constraints: {
+                        width: 640,
+                        height: 480,
+                        facingMode: "environment"
+                    }
+                },
+                decoder: {
+                    readers: [
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_128_reader",
+                        "code_39_reader",
+                        "upc_reader",
+                        "upc_e_reader"
+                    ]
+                },
+                locate: true
+            }, function(err) {
+                if (err) {
+                    console.error(err);
+                    showAlert('Camera access denied or not available', 'error');
+                    stopCamera();
+                    return;
+                }
+                Quagga.start();
+                document.getElementById('camera-status').textContent = '✅ Camera active - Scanning...';
+            });
+
+            Quagga.onDetected(function(result) {
+                if (cameraActive) {
+                    const code = result.codeResult.code;
+                    if (code !== lastScannedCode) {
+                        lastScannedCode = code;
+                        document.getElementById('camera-status').textContent = `🎯 Detected: ${code}`;
+                        
+                        // Beep sound (optional)
+                        const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZVA0NVKzn77BdGAg+ltzyxnUpBSuBzvLZiTYIG');
+                        beep.play().catch(() => {});
+                        
+                        // Stop camera and process barcode
+                        setTimeout(() => {
+                            stopCamera();
+                            document.getElementById('barcodeInput').value = code;
+                            scanBarcode();
+                        }, 500);
+                    }
+                }
+            });
+        }
+
+        function stopCamera() {
+            const modal = document.getElementById('camera-modal');
+            modal.classList.remove('active');
+            cameraActive = false;
+            lastScannedCode = null;
+            
+            if (Quagga) {
+                Quagga.stop();
+            }
+            document.getElementById('camera-status').textContent = '📷 Position barcode in front of camera';
         }
 
         function showLoading() { document.getElementById('loadingSpinner').style.display = 'block'; document.getElementById('resultsContainer').style.display = 'none'; }
@@ -596,6 +768,13 @@
             setTimeout(() => alertDiv.remove(), 4000);
         }
         function updateLastUpdate() { document.getElementById('lastUpdate').textContent = `Last updated: ${new Date().toLocaleTimeString()}`; }
+
+        // Close camera on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && cameraActive) {
+                stopCamera();
+            }
+        });
     </script>
 </body>
 </html>
