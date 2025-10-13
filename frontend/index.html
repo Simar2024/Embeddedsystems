@@ -446,7 +446,11 @@
                     <input type="text" id="barcodeInput" placeholder="Enter barcode number or scan..." autofocus>
                     <button class="btn btn-primary" onclick="scanBarcode()">Search</button>
                 </div>
-                <button class="btn btn-secondary" onclick="startCamera()">📷 Use Camera</button>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                    <button class="btn btn-secondary" onclick="startCamera()">📷 Use Camera</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('imageInput').click()">🖼️ Upload Image</button>
+                </div>
+                <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="processImageUpload(this)">
             </div>
 
             <div class="loading" id="loadingSpinner">
@@ -755,6 +759,49 @@
                 Quagga.stop();
             }
             document.getElementById('camera-status').textContent = '📷 Position barcode in front of camera';
+        }
+
+        function processImageUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                showAlert('Processing image...', 'success');
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        // Use Quagga to decode the image
+                        Quagga.decodeSingle({
+                            src: e.target.result,
+                            numOfWorkers: 0,
+                            decoder: {
+                                readers: [
+                                    "ean_reader",
+                                    "ean_8_reader",
+                                    "code_128_reader",
+                                    "code_39_reader",
+                                    "upc_reader",
+                                    "upc_e_reader"
+                                ]
+                            },
+                            locate: true
+                        }, function(result) {
+                            if (result && result.codeResult) {
+                                const barcode = result.codeResult.code;
+                                showAlert(`✅ Barcode detected: ${barcode}`, 'success');
+                                document.getElementById('barcodeInput').value = barcode;
+                                setTimeout(() => scanBarcode(), 500);
+                            } else {
+                                showAlert('❌ No barcode detected in image. Try a clearer photo or enter manually.', 'error');
+                            }
+                        });
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+            // Reset the input so the same file can be selected again
+            input.value = '';
         }
 
         function showLoading() { document.getElementById('loadingSpinner').style.display = 'block'; document.getElementById('resultsContainer').style.display = 'none'; }

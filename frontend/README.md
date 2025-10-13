@@ -54,6 +54,7 @@ Change to your server's IP/domain.
 
 ### Current Features
 - ✅ **Real-time camera barcode scanning** (QuaggaJS)
+- ✅ **Image upload scanning** - Upload barcode photos for easier scanning
 - ✅ Manual barcode input
 - ✅ Product search functionality
 - ✅ Nutrition information display (7 metrics)
@@ -69,6 +70,7 @@ Change to your server's IP/domain.
 
 ### Advanced Features
 - 📸 **Browser-based camera scanning** - No Python/OpenCV needed
+- 🖼️ **Image upload** - Upload photos of barcodes (easier than live camera)
 - 🎯 **Auto-detection** - Automatically finds and scans barcodes
 - 🔊 **Audio feedback** - Beep sound on successful scan
 - ⚡ **Instant results** - Automatic search after scan
@@ -87,6 +89,11 @@ Change to your server's IP/domain.
 The interface includes built-in sample products:
 - `1234567890` - Organic Whole Wheat Bread
 - `9876543210` - Chocolate Chip Cookies
+
+### Three Ways to Scan
+1. **Manual Entry** - Type barcode directly
+2. **Live Camera** - Use device camera for real-time scanning
+3. **Upload Image** - Take a photo first, then upload (recommended for best results)
 
 ### Test with Backend
 1. Ensure PHP backend is running
