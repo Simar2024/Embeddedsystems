@@ -1,10 +1,11 @@
 """
 Smart Barcode Nutrition Scanner
-Main Application - Raspberry Pi with SenseHat
+Main Application - Raspberry Pi with SenseHat + Joystick
 Python 3.7+
 
 Run: python3 main.py
 Exit Fullscreen: Press ESC or F11
+Joystick: UP/DOWN to navigate, MIDDLE to select
 """
 
 import tkinter as tk
@@ -38,6 +39,7 @@ SQLITE_DB = "nutrition_cache.db"
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 ORANGE = (255, 165, 0)
+BLUE = (0, 0, 255)
 OFF = (0, 0, 0)
 
 class NutritionScannerApp:
@@ -52,7 +54,7 @@ class NutritionScannerApp:
         # Bind keys
         self.root.bind('<Escape>', lambda e: self.root.attributes('-fullscreen', False))
         self.root.bind('<F11>', lambda e: self.root.attributes('-fullscreen', True))
-        self.root.bind('<q>', lambda e: self.root.quit())
+        self.root.bind('<q>', lambda e: self.quit_app())
         
         # Initialize database
         self.init_sqlite_db()
@@ -64,12 +66,23 @@ class NutritionScannerApp:
         self.user_allergens = self.load_user_allergens()
         self.led_thread = None
         
+        # Joystick variables
+        self.joystick_thread = None
+        self.joystick_running = False
+        self.current_menu_index = 0
+        self.menu_items = []
+        
         # Create GUI
         self.create_gui()
+        
+        # Start joystick listener
+        if SENSEHAT_AVAILABLE:
+            self.start_joystick_listener()
         
         print("✅ Application started successfully")
         if SENSEHAT_AVAILABLE:
             print("✅ SenseHat LED matrix ready")
+            print("✅ Joystick navigation enabled - UP/DOWN to navigate, MIDDLE to select")
         
     def init_sqlite_db(self):
         """Initialize SQLite database for offline cache"""
@@ -177,6 +190,69 @@ class NutritionScannerApp:
             threading.Event().wait(0.3)
         sense.clear(color)
     
+    def start_joystick_listener(self):
+        """Start listening to joystick events"""
+        if not SENSEHAT_AVAILABLE:
+            return
+        
+        self.joystick_running = True
+        self.joystick_thread = threading.Thread(target=self._joystick_loop, daemon=True)
+        self.joystick_thread.start()
+        
+    def _joystick_loop(self):
+        """Joystick event loop - runs in separate thread"""
+        while self.joystick_running:
+            for event in sense.stick.get_events():
+                if event.action == "pressed":
+                    if event.direction == "up":
+                        self.joystick_up()
+                    elif event.direction == "down":
+                        self.joystick_down()
+                    elif event.direction == "middle":
+                        self.joystick_select()
+                    elif event.direction == "left":
+                        self.refresh_connection()
+                    elif event.direction == "right":
+                        self.open_settings()
+            threading.Event().wait(0.1)
+    
+    def joystick_up(self):
+        """Handle joystick UP - navigate menu"""
+        if len(self.menu_items) > 0:
+            self.current_menu_index = (self.current_menu_index - 1) % len(self.menu_items)
+            self.highlight_menu_item()
+            self.set_led_color(BLUE, 'solid')
+    
+    def joystick_down(self):
+        """Handle joystick DOWN - navigate menu"""
+        if len(self.menu_items) > 0:
+            self.current_menu_index = (self.current_menu_index + 1) % len(self.menu_items)
+            self.highlight_menu_item()
+            self.set_led_color(BLUE, 'solid')
+    
+    def joystick_select(self):
+        """Handle joystick MIDDLE - select current menu item"""
+        if len(self.menu_items) > 0:
+            selected_button = self.menu_items[self.current_menu_index]
+            # Invoke button in main thread
+            self.root.after(0, selected_button.invoke)
+            self.set_led_color(GREEN, 'solid')
+    
+    def highlight_menu_item(self):
+        """Highlight current menu item"""
+        for i, btn in enumerate(self.menu_items):
+            if i == self.current_menu_index:
+                btn.configure(relief=tk.RAISED, borderwidth=4)
+            else:
+                btn.configure(relief=tk.FLAT, borderwidth=1)
+    
+    def quit_app(self):
+        """Quit application and cleanup"""
+        self.joystick_running = False
+        if SENSEHAT_AVAILABLE:
+            sense.clear()
+        self.root.quit()
+    
     def create_gui(self):
         """Create the main GUI interface"""
         # Title bar
@@ -193,10 +269,20 @@ class NutritionScannerApp:
         )
         title_label.pack(side=tk.LEFT, padx=20, pady=15)
         
+        if SENSEHAT_AVAILABLE:
+            joystick_label = tk.Label(
+                title_frame,
+                text="🕹️ Joystick: ↑↓ Navigate • ⏺ Select • ← Refresh • → Settings",
+                font=("Arial", 10),
+                bg="#4a90e2",
+                fg="white"
+            )
+            joystick_label.pack(side=tk.LEFT, padx=10, pady=15)
+        
         exit_btn = tk.Button(
             title_frame,
             text="✕ EXIT",
-            command=self.root.quit,
+            command=self.quit_app,
             bg="#f44336",
             fg="white",
             font=("Arial", 14, "bold"),
@@ -235,7 +321,7 @@ class NutritionScannerApp:
         if SENSEHAT_AVAILABLE:
             led_status = tk.Label(
                 status_frame,
-                text="💡 LED: Ready",
+                text="💡 LED Ready | 🕹️ Joystick Active",
                 font=("Arial", 11),
                 bg="#e8e8e8",
                 fg="#4caf50"
@@ -302,6 +388,7 @@ class NutritionScannerApp:
             height=3
         )
         self.start_camera_btn.grid(row=0, column=0, padx=5)
+        self.menu_items.append(self.start_camera_btn)
         
         self.stop_camera_btn = tk.Button(
             btn_frame,
@@ -327,6 +414,7 @@ class NutritionScannerApp:
             height=3
         )
         upload_btn.grid(row=1, column=0, padx=5, pady=5)
+        self.menu_items.append(upload_btn)
         
         manual_btn = tk.Button(
             btn_frame,
@@ -339,6 +427,7 @@ class NutritionScannerApp:
             height=3
         )
         manual_btn.grid(row=1, column=1, padx=5, pady=5)
+        self.menu_items.append(manual_btn)
         
         # Right panel - Results
         right_frame = tk.Frame(main_frame, bg="white", relief=tk.RAISED, bd=2)
@@ -369,6 +458,10 @@ class NutritionScannerApp:
         scrollbar.pack(side="right", fill="y")
         
         self.show_welcome_message()
+        
+        # Highlight first menu item
+        if self.menu_items:
+            self.highlight_menu_item()
         
     def open_settings(self):
         """Open allergen settings dialog"""
@@ -454,10 +547,14 @@ class NutritionScannerApp:
         """Show welcome message"""
         for widget in self.results_frame.winfo_children():
             widget.destroy()
+        
+        welcome_text = "👋 Welcome!\n\nScan a barcode to get started\n\n💡 Set your allergens in Settings"
+        if SENSEHAT_AVAILABLE:
+            welcome_text += "\n\n🕹️ Use joystick to navigate"
             
         welcome = tk.Label(
             self.results_frame,
-            text="👋 Welcome!\n\nScan a barcode to get started\n\n💡 Set your allergens in Settings",
+            text=welcome_text,
             font=("Arial", 13),
             bg="white",
             fg="#666"
@@ -482,7 +579,7 @@ class NutritionScannerApp:
         threading.Thread(target=self.camera_scan_loop, daemon=True).start()
         
     def camera_scan_loop(self):
-        """Camera loop"""
+        """Camera loop - runs in separate thread"""
         self.camera = cv2.VideoCapture(0)
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -525,28 +622,75 @@ class NutritionScannerApp:
         self.camera_label.config(image='', text="Camera Stopped", bg="black", fg="white")
         
     def upload_image(self):
-        """Upload image"""
+        """Upload image and scan for barcode - FIXED VERSION"""
+        print("📁 Opening file dialog...")
         file_path = filedialog.askopenfilename(
             title="Select Barcode Image",
-            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp")]
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
+                ("All files", "*.*")
+            ]
         )
         
-        if file_path:
+        if not file_path:
+            print("❌ No file selected")
+            return
+            
+        print(f"📸 Selected file: {file_path}")
+        
+        try:
+            # Read image with OpenCV
             image = cv2.imread(file_path)
+            
+            if image is None:
+                print("❌ Could not read image file")
+                messagebox.showerror("Error", "Could not read image file.\nPlease select a valid image.")
+                return
+            
+            print(f"✅ Image loaded: {image.shape}")
+            
+            # Display the uploaded image
+            display_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            display_pil = Image.fromarray(display_image)
+            display_pil = display_pil.resize((480, 360), Image.Resampling.LANCZOS)
+            display_tk = ImageTk.PhotoImage(display_pil)
+            
+            self.camera_label.config(image=display_tk, text="")
+            self.camera_label.image = display_tk
+            self.root.update()
+            
+            print("🔍 Decoding barcodes...")
+            
+            # Decode barcodes
             barcodes = pyzbar.decode(image)
             
             if barcodes:
                 barcode_data = barcodes[0].data.decode('utf-8')
+                print(f"✅ Barcode found: {barcode_data}")
                 self.process_barcode(barcode_data)
             else:
-                messagebox.showerror("Error", "No barcode found in image")
+                print("❌ No barcode detected in image")
+                messagebox.showerror(
+                    "No Barcode Found", 
+                    "No barcode detected in the image.\n\n" +
+                    "Tips:\n" +
+                    "• Ensure the barcode is clear and in focus\n" +
+                    "• Try better lighting conditions\n" +
+                    "• Use a higher resolution image\n" +
+                    "• Make sure the entire barcode is visible"
+                )
                 
+        except Exception as e:
+            print(f"❌ Error processing image: {e}")
+            messagebox.showerror("Error", f"Failed to process image:\n\n{str(e)}")
+            
     def manual_entry(self):
         """Manual entry"""
         dialog = tk.Toplevel(self.root)
         dialog.title("Manual Barcode Entry")
-        dialog.geometry("400x150")
+        dialog.geometry("400x180")
         dialog.configure(bg="white")
+        dialog.grab_set()  # Make modal
         
         tk.Label(
             dialog,
@@ -567,20 +711,24 @@ class NutritionScannerApp:
             else:
                 messagebox.showerror("Error", "Please enter a barcode")
         
-        tk.Button(
+        submit_btn = tk.Button(
             dialog,
-            text="Submit",
+            text="✓ Submit",
             command=submit,
             bg="#4caf50",
             fg="white",
             font=("Arial", 12, "bold"),
-            width=15
-        ).pack(pady=10)
+            width=15,
+            height=2
+        )
+        submit_btn.pack(pady=10)
         
         entry.bind('<Return>', lambda e: submit())
         
     def process_barcode(self, barcode):
         """Process barcode"""
+        print(f"🔄 Processing barcode: {barcode}")
+        
         for widget in self.results_frame.winfo_children():
             widget.destroy()
             
@@ -598,7 +746,7 @@ class NutritionScannerApp:
         if product:
             self.display_product_info(product)
         else:
-            self.display_error(f"Product not found: {barcode}")
+            self.display_error(f"Product not found for barcode: {barcode}")
             self.set_led_color(OFF)
             
     def get_product_data(self, barcode):
@@ -607,24 +755,31 @@ class NutritionScannerApp:
         
         if self.is_online:
             try:
+                print(f"🌐 API call: {API_BASE_URL}/get_product.php?barcode={barcode}")
                 response = requests.get(
                     f"{API_BASE_URL}/get_product.php?barcode={barcode}",
                     timeout=5
                 )
+                
+                print(f"📡 Response: {response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('success'):
                         product = data.get('data')
                         self.cache_product(product)
-                        print(f"✅ Fetched from online database: {product['name']}")
+                        print(f"✅ Fetched from database: {product['name']}")
+                    else:
+                        print(f"❌ API error: {data.get('error')}")
+                else:
+                    print(f"❌ HTTP error: {response.status_code}")
             except Exception as e:
                 print(f"❌ API Error: {e}")
                 
         if not product:
             product = self.get_cached_product(barcode)
             if product:
-                print(f"✅ Loaded from offline cache: {product['name']}")
+                print(f"✅ Loaded from cache: {product['name']}")
             
         return product
         
@@ -680,6 +835,9 @@ class NutritionScannerApp:
             
         # Check allergens
         product_allergens = set(product.get('allergens', []))
+        if isinstance(product.get('allergens'), str):
+            product_allergens = set(product['allergens'].split(',')) if product['allergens'] else set()
+        
         has_allergen = bool(self.user_allergens & product_allergens)
         
         # Set LED based on allergen and health
@@ -791,7 +949,7 @@ class NutritionScannerApp:
                 ).pack(side=tk.RIGHT)
                 
         # All allergens
-        if product.get('allergens') and len(product['allergens']) > 0:
+        if product_allergens and len(product_allergens) > 0:
             allergen_frame2 = tk.LabelFrame(
                 self.results_frame,
                 text="Contains Allergens",
@@ -800,7 +958,7 @@ class NutritionScannerApp:
             )
             allergen_frame2.pack(pady=10, padx=20, fill=tk.X)
             
-            allergens_text = ", ".join([a.capitalize() for a in product['allergens']])
+            allergens_text = ", ".join([a.capitalize() for a in product_allergens])
             tk.Label(
                 allergen_frame2,
                 text=allergens_text,
