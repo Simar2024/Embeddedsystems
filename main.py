@@ -30,7 +30,7 @@ try:
     sense.clear()
 except ImportError:
     SENSEHAT_AVAILABLE = False
-    print("⚠️  SenseHat not available - LED features disabled (running on non-RPi?)")
+    print("WARNING: SenseHat not available - LED features disabled (running on non-RPi?)")
 
 # Configuration
 API_BASE_URL = "http://localhost/api"  # Change if API is hosted elsewhere
@@ -136,10 +136,10 @@ class NutritionScannerApp:
             self.start_joystick_listener()
             self.show_arrow_pattern(ARROW_UP)  # Show default arrow
         
-        print("✅ Application started successfully")
+        print("SUCCESS: Application started successfully")
         if SENSEHAT_AVAILABLE:
-            print("✅ SenseHat LED matrix ready")
-            print("✅ Joystick navigation enabled - UP/DOWN to navigate, MIDDLE to select")
+            print("SUCCESS: SenseHat LED matrix ready")
+            print("SUCCESS: Joystick navigation enabled - UP/DOWN to navigate, MIDDLE to select")
         
     def init_sqlite_db(self):
         """Initialize SQLite database for offline cache"""
@@ -188,7 +188,7 @@ class NutritionScannerApp:
         
         conn.commit()
         conn.close()
-        print("✅ SQLite database initialized")
+        print("SUCCESS: SQLite database initialized")
         
     def load_user_allergens(self):
         """Load user's allergen preferences"""
@@ -422,7 +422,7 @@ class NutritionScannerApp:
         
         title_label = tk.Label(
             title_frame,
-            text="🔍 Smart Nutrition Scanner",
+            text="Smart Nutrition Scanner",
             font=("Arial", 20, "bold"),
             bg="#4a90e2",
             fg="white"
@@ -432,7 +432,7 @@ class NutritionScannerApp:
         if SENSEHAT_AVAILABLE:
             joystick_label = tk.Label(
                 title_frame,
-                text="🕹️ Joystick: ↑↓ Navigate • ⏺ Select • ← Refresh • → Settings",
+                text="Joystick: UP/DOWN Navigate | SELECT Choose | LEFT Refresh | RIGHT Settings",
                 font=("Arial", 10),
                 bg="#4a90e2",
                 fg="white"
@@ -441,7 +441,7 @@ class NutritionScannerApp:
         
         exit_btn = tk.Button(
             title_frame,
-            text="✕ EXIT",
+            text="EXIT",
             command=self.quit_app,
             bg="#f44336",
             fg="white",
@@ -456,7 +456,7 @@ class NutritionScannerApp:
         status_frame.pack(fill=tk.X)
         
         status_color = "#4caf50" if self.is_online else "#ff9800"
-        status_text = "🟢 ONLINE" if self.is_online else "🟠 OFFLINE"
+        status_text = "ONLINE" if self.is_online else "OFFLINE"
         
         self.status_label = tk.Label(
             status_frame,
@@ -468,7 +468,7 @@ class NutritionScannerApp:
         self.status_label.pack(side=tk.LEFT, padx=20, pady=10)
         
         allergen_count = len(self.user_allergens)
-        allergen_text = f"⚠️ {allergen_count} Allergen(s) Set" if allergen_count > 0 else "No Allergens Set"
+        allergen_text = f"Allergens: {allergen_count} Set" if allergen_count > 0 else "No Allergens Set"
         self.allergen_status_label = tk.Label(
             status_frame,
             text=allergen_text,
@@ -481,7 +481,7 @@ class NutritionScannerApp:
         # Add scan counter to status bar
         self.scan_counter_label = tk.Label(
             status_frame,
-            text=f"📊 Total Scans: {self.total_scans}",
+            text=f"Total Scans: {self.total_scans}",
             font=("Arial", 11),
             bg="#e8e8e8",
             fg="#2196f3"
@@ -491,7 +491,7 @@ class NutritionScannerApp:
         if SENSEHAT_AVAILABLE:
             led_status = tk.Label(
                 status_frame,
-                text="💡 LED Ready | 🕹️ Joystick Active",
+                text="LED Ready | Joystick Active",
                 font=("Arial", 11),
                 bg="#e8e8e8",
                 fg="#4caf50"
@@ -500,7 +500,7 @@ class NutritionScannerApp:
         
         settings_btn = tk.Button(
             status_frame,
-            text="⚙️ Settings",
+            text="Settings",
             command=self.open_settings,
             bg="#9c27b0",
             fg="white",
@@ -513,7 +513,7 @@ class NutritionScannerApp:
         
         refresh_btn = tk.Button(
             status_frame,
-            text="🔄 Refresh",
+            text="Refresh",
             command=self.refresh_connection,
             bg="#2196f3",
             fg="white",
@@ -534,7 +534,7 @@ class NutritionScannerApp:
         
         scan_title = tk.Label(
             left_frame,
-            text="📷 Scan Area",
+            text="Scan Area",
             font=("Arial", 14, "bold"),
             bg="white"
         )
@@ -549,7 +549,7 @@ class NutritionScannerApp:
         
         self.start_camera_btn = tk.Button(
             btn_frame,
-            text="📹 Start\nCamera",
+            text="Start\nCamera",
             command=self.start_camera_scan,
             bg="#4caf50",
             fg="white",
@@ -562,7 +562,7 @@ class NutritionScannerApp:
         
         self.stop_camera_btn = tk.Button(
             btn_frame,
-            text="⏹ Stop\nCamera",
+            text="Stop\nCamera",
             command=self.stop_camera_scan,
             bg="#f44336",
             fg="white",
@@ -575,7 +575,7 @@ class NutritionScannerApp:
         
         upload_btn = tk.Button(
             btn_frame,
-            text="📁 Upload\nImage",
+            text="Upload\nImage",
             command=self.upload_image,
             bg="#2196f3",
             fg="white",
@@ -588,7 +588,7 @@ class NutritionScannerApp:
         
         manual_btn = tk.Button(
             btn_frame,
-            text="⌨️ Manual\nEntry",
+            text="Manual\nEntry",
             command=self.manual_entry,
             bg="#ff9800",
             fg="white",
@@ -601,7 +601,7 @@ class NutritionScannerApp:
         
         history_btn = tk.Button(
             btn_frame,
-            text="📜 View\nHistory",
+            text="View\nHistory",
             command=self.view_history,
             bg="#9c27b0",
             fg="white",
@@ -614,7 +614,7 @@ class NutritionScannerApp:
         
         stats_btn = tk.Button(
             btn_frame,
-            text="📊 View\nStatistics",
+            text="View\nStatistics",
             command=self.view_statistics,
             bg="#00bcd4",
             fg="white",
@@ -631,7 +631,7 @@ class NutritionScannerApp:
         
         results_title = tk.Label(
             right_frame,
-            text="📊 Nutrition Information",
+            text="Nutrition Information",
             font=("Arial", 14, "bold"),
             bg="white"
         )
@@ -663,14 +663,14 @@ class NutritionScannerApp:
     def open_settings(self):
         """Open allergen settings dialog"""
         settings_window = tk.Toplevel(self.root)
-        settings_window.title("⚙️ Settings")
+        settings_window.title("Settings")
         settings_window.geometry("500x650")
         settings_window.configure(bg="white")
         settings_window.grab_set()
         
         tk.Label(
             settings_window,
-            text="⚠️ My Allergen Preferences",
+            text="My Allergen Preferences",
             font=("Arial", 16, "bold"),
             bg="white"
         ).pack(pady=20)
@@ -711,7 +711,7 @@ class NutritionScannerApp:
             self.save_user_allergens(selected_allergens)
             
             allergen_count = len(selected_allergens)
-            allergen_text = f"⚠️ {allergen_count} Allergen(s) Set" if allergen_count > 0 else "No Allergens Set"
+            allergen_text = f"Allergens: {allergen_count} Set" if allergen_count > 0 else "No Allergens Set"
             self.allergen_status_label.config(
                 text=allergen_text,
                 fg="#f44336" if allergen_count > 0 else "#666"
@@ -722,7 +722,7 @@ class NutritionScannerApp:
         
         tk.Button(
             settings_window,
-            text="💾 Save Settings",
+            text="Save Settings",
             command=save_settings,
             bg="#4caf50",
             fg="white",
@@ -744,13 +744,13 @@ class NutritionScannerApp:
     def view_history(self):
         """View scan history"""
         history_window = tk.Toplevel(self.root)
-        history_window.title("📜 Scan History")
+        history_window.title("Scan History")
         history_window.geometry("700x600")
         history_window.configure(bg="white")
         
         tk.Label(
             history_window,
-            text="📜 Recent Scans",
+            text="Recent Scans",
             font=("Arial", 16, "bold"),
             bg="white"
         ).pack(pady=20)
@@ -798,9 +798,9 @@ class NutritionScannerApp:
                 item_frame.pack(fill=tk.X, padx=10, pady=5)
                 
                 # Health indicator
-                indicator = "✅" if is_healthy else "⚠️"
+                indicator = "[HEALTHY]" if is_healthy else "[WARNING]"
                 if has_allergen:
-                    indicator = "🚨"
+                    indicator = "[ALLERGEN]"
                 
                 tk.Label(
                     item_frame,
@@ -831,13 +831,13 @@ class NutritionScannerApp:
     def view_statistics(self):
         """View scanning statistics"""
         stats_window = tk.Toplevel(self.root)
-        stats_window.title("📊 Statistics")
+        stats_window.title("Statistics")
         stats_window.geometry("600x500")
         stats_window.configure(bg="white")
         
         tk.Label(
             stats_window,
-            text="📊 Your Scanning Statistics",
+            text="Your Scanning Statistics",
             font=("Arial", 16, "bold"),
             bg="white"
         ).pack(pady=20)
@@ -851,7 +851,7 @@ class NutritionScannerApp:
         
         tk.Label(
             total_frame,
-            text="🔍 Total Scans",
+            text="Total Scans",
             font=("Arial", 14, "bold"),
             bg="#e3f2fd"
         ).pack(pady=10)
@@ -870,7 +870,7 @@ class NutritionScannerApp:
         
         tk.Label(
             healthy_frame,
-            text="✅ Healthy Products",
+            text="Healthy Products",
             font=("Arial", 14, "bold"),
             bg="#e8f5e9"
         ).pack(pady=10)
@@ -891,7 +891,7 @@ class NutritionScannerApp:
         
         tk.Label(
             allergen_frame,
-            text="⚠️ Allergen Warnings",
+            text="Allergen Warnings",
             font=("Arial", 14, "bold"),
             bg="#ffebee"
         ).pack(pady=10)
@@ -918,7 +918,7 @@ class NutritionScannerApp:
             
             tk.Button(
                 led_frame,
-                text="🌈 Rainbow",
+                text="Rainbow",
                 command=lambda: self.set_led_color(None, 'rainbow'),
                 bg="#9c27b0",
                 fg="white",
@@ -928,7 +928,7 @@ class NutritionScannerApp:
             
             tk.Button(
                 led_frame,
-                text="💚 Pulse",
+                text="Pulse",
                 command=lambda: self.set_led_color(GREEN, 'pulse'),
                 bg="#4caf50",
                 fg="white",
@@ -938,7 +938,7 @@ class NutritionScannerApp:
             
             tk.Button(
                 led_frame,
-                text="🔴 Flash",
+                text="Flash",
                 command=lambda: self.set_led_color(RED, 'flash'),
                 bg="#f44336",
                 fg="white",
@@ -961,9 +961,9 @@ class NutritionScannerApp:
         for widget in self.results_frame.winfo_children():
             widget.destroy()
         
-        welcome_text = "👋 Welcome!\n\nScan a barcode to get started\n\n💡 Set your allergens in Settings"
+        welcome_text = "Welcome!\n\nScan a barcode to get started\n\nSet your allergens in Settings"
         if SENSEHAT_AVAILABLE:
-            welcome_text += "\n\n🕹️ Use joystick to navigate"
+            welcome_text += "\n\nUse joystick to navigate"
             
         welcome = tk.Label(
             self.results_frame,
@@ -978,7 +978,7 @@ class NutritionScannerApp:
         """Refresh connection status"""
         self.is_online = self.check_connection()
         status_color = "#4caf50" if self.is_online else "#ff9800"
-        status_text = "🟢 ONLINE" if self.is_online else "🟠 OFFLINE"
+        status_text = "ONLINE" if self.is_online else "OFFLINE"
         self.status_label.config(text=status_text, fg=status_color)
         
         if SENSEHAT_AVAILABLE:
@@ -1049,7 +1049,7 @@ class NutritionScannerApp:
         
     def upload_image(self):
         """Upload image and scan for barcode"""
-        print("📁 Opening file dialog...")
+        print("INFO: Opening file dialog...")
         file_path = filedialog.askopenfilename(
             title="Select Barcode Image",
             filetypes=[
@@ -1059,21 +1059,21 @@ class NutritionScannerApp:
         )
         
         if not file_path:
-            print("❌ No file selected")
+            print("INFO: No file selected")
             return
             
-        print(f"📸 Selected file: {file_path}")
+        print(f"INFO: Selected file: {file_path}")
         
         try:
             # Read image with OpenCV
             image = cv2.imread(file_path)
             
             if image is None:
-                print("❌ Could not read image file")
+                print("ERROR: Could not read image file")
                 messagebox.showerror("Error", "Could not read image file.\nPlease select a valid image.")
                 return
             
-            print(f"✅ Image loaded: {image.shape}")
+            print(f"SUCCESS: Image loaded: {image.shape}")
             
             # Display the uploaded image
             display_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -1085,29 +1085,29 @@ class NutritionScannerApp:
             self.camera_label.image = display_tk
             self.root.update()
             
-            print("🔍 Decoding barcodes...")
+            print("INFO: Decoding barcodes...")
             
             # Decode barcodes
             barcodes = pyzbar.decode(image)
             
             if barcodes:
                 barcode_data = barcodes[0].data.decode('utf-8')
-                print(f"✅ Barcode found: {barcode_data}")
+                print(f"SUCCESS: Barcode found: {barcode_data}")
                 self.process_barcode(barcode_data)
             else:
-                print("❌ No barcode detected in image")
+                print("ERROR: No barcode detected in image")
                 messagebox.showerror(
                     "No Barcode Found", 
                     "No barcode detected in the image.\n\n" +
                     "Tips:\n" +
-                    "• Ensure the barcode is clear and in focus\n" +
-                    "• Try better lighting conditions\n" +
-                    "• Use a higher resolution image\n" +
-                    "• Make sure the entire barcode is visible"
+                    "- Ensure the barcode is clear and in focus\n" +
+                    "- Try better lighting conditions\n" +
+                    "- Use a higher resolution image\n" +
+                    "- Make sure the entire barcode is visible"
                 )
                 
         except Exception as e:
-            print(f"❌ Error processing image: {e}")
+            print(f"ERROR: Error processing image: {e}")
             messagebox.showerror("Error", f"Failed to process image:\n\n{str(e)}")
             
     def manual_entry(self):
@@ -1139,7 +1139,7 @@ class NutritionScannerApp:
         
         submit_btn = tk.Button(
             dialog,
-            text="✓ Submit",
+            text="Submit",
             command=submit,
             bg="#4caf50",
             fg="white",
@@ -1157,14 +1157,14 @@ class NutritionScannerApp:
         if len(barcode) == 13 and barcode.startswith('0'):
             barcode = barcode[1:]
         
-        print(f"🔄 Processing barcode: {barcode}")
+        print(f"INFO: Processing barcode: {barcode}")
         
         for widget in self.results_frame.winfo_children():
             widget.destroy()
             
         loading = tk.Label(
             self.results_frame,
-            text="⏳ Loading...",
+            text="Loading...",
             font=("Arial", 16),
             bg="white"
         )
@@ -1180,7 +1180,7 @@ class NutritionScannerApp:
             self.total_scans = self.get_total_scans()
             self.healthy_scans = self.get_healthy_scans()
             self.allergen_warnings = self.get_allergen_warnings()
-            self.scan_counter_label.config(text=f"📊 Total Scans: {self.total_scans}")
+            self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
         else:
             self.display_error(f"Product not found for barcode: {barcode}")
             self.set_led_color(OFF)
@@ -1191,31 +1191,31 @@ class NutritionScannerApp:
         
         if self.is_online:
             try:
-                print(f"🌐 API call: {API_BASE_URL}/get_product.php?barcode={barcode}")
+                print(f"INFO: API call: {API_BASE_URL}/get_product.php?barcode={barcode}")
                 response = requests.get(
                     f"{API_BASE_URL}/get_product.php?barcode={barcode}",
                     timeout=5
                 )
                 
-                print(f"📡 Response: {response.status_code}")
+                print(f"INFO: Response: {response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('success'):
                         product = data.get('data')
                         self.cache_product(product)
-                        print(f"✅ Fetched from database: {product['name']}")
+                        print(f"SUCCESS: Fetched from database: {product['name']}")
                     else:
-                        print(f"❌ API error: {data.get('error')}")
+                        print(f"ERROR: API error: {data.get('error')}")
                 else:
-                    print(f"❌ HTTP error: {response.status_code}")
+                    print(f"ERROR: HTTP error: {response.status_code}")
             except Exception as e:
-                print(f"❌ API Error: {e}")
+                print(f"ERROR: API Error: {e}")
                 
         if not product:
             product = self.get_cached_product(barcode)
             if product:
-                print(f"✅ Loaded from cache: {product['name']}")
+                print(f"SUCCESS: Loaded from cache: {product['name']}")
             
         return product
         
@@ -1317,7 +1317,7 @@ class NutritionScannerApp:
         if has_allergen:
             allergen_frame = tk.LabelFrame(
                 self.results_frame,
-                text="🚨 ALLERGEN ALERT",
+                text="ALLERGEN ALERT",
                 font=("Arial", 14, "bold"),
                 bg="#ffebee",
                 fg="#f44336",
@@ -1331,7 +1331,7 @@ class NutritionScannerApp:
             
             tk.Label(
                 allergen_frame,
-                text=f"⚠️ Contains: {allergens_text}",
+                text=f"WARNING: Contains {allergens_text}",
                 font=("Arial", 12, "bold"),
                 bg="#ffebee",
                 fg="#f44336",
@@ -1420,7 +1420,7 @@ class NutritionScannerApp:
             
         error_label = tk.Label(
             self.results_frame,
-            text="❌ Error",
+            text="ERROR",
             font=("Arial", 18, "bold"),
             bg="white",
             fg="#f44336"
@@ -1445,7 +1445,7 @@ def main():
     finally:
         if SENSEHAT_AVAILABLE:
             sense.clear()
-        print("👋 Application closed")
+        print("INFO: Application closed")
 
 if __name__ == "__main__":
     main()
