@@ -1,4 +1,54 @@
-"""
+def start_add_product(self):
+        """Start the process of adding a new product"""
+        if not self.is_online:
+            messagebox.showerror(
+                "Offline Mode",
+                "You must be ONLINE to add new products to the database.\n\n" +
+                "Please connect to the internet and try again."
+            )
+            return
+        
+        self.adding_product = True
+        self.captured_image = None
+        self.captured_barcode = None
+        
+        # Start camera to capture barcode
+        self.start_camera_btn.config(state=tk.DISABLED)
+        self.stop_camera_btn.config(state=tk.NORMAL)
+        
+        messagebox.showinfo(
+            "Add Product",
+            "AUTO-CAPTURE MODE\n\n" +
+            "Point camera at any barcode.\n" +
+            "Image will be captured automatically when detected.\n\n" +
+            "Saves to: /home/pi/Pictures"
+        )
+        
+        self.scanning = True
+        threading.Thread(target=self.add_product_camera_loop, daemon=True).start()
+    
+    def add_product_camera_loop(self):
+        """Camera loop for adding products - AUTO capture on detection"""
+        self.camera = cv2.VideoCapture(0)
+        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        captured = False
+        
+        while self.scanning and self.adding_product and not captured:
+            ret, frame = self.camera.read()
+            if not ret:
+                break
+            
+            barcodes = pyzbar.decode(frame)
+            
+            if barcodes and not captured:
+                barcode = barcodes[0]
+                barcode_data = barcode.data.decode('utf-8')
+                print(f"INFO: Detected barcode: {barcode_data} (Type: {barcode.type})")
+                
+                # Remove leading zero ONLY for numeric UPC-A codes
+                if barcode_data.is"""
 Smart Barcode Nutrition Scanner
 Main Application - Raspberry Pi with SenseHat + Joystick
 Python 3.7+
@@ -759,39 +809,99 @@ class NutritionScannerApp:
             )
             return
         
-        self.adding_product = True
-        self.captured_image = None
-        self.captured_barcode = None
-        self.capture_ready = False
-        self.detected_barcode = None
+        # Ask user for capture mode
+        mode_dialog = tk.Toplevel(self.root)
+        mode_dialog.title("Choose Capture Mode")
+        mode_dialog.geometry("400x200")
+        mode_dialog.configure(bg="white")
+        mode_dialog.grab_set()
         
-        # Start camera to capture barcode
-        self.start_camera_btn.config(state=tk.DISABLED)
-        self.stop_camera_btn.config(state=tk.NORMAL)
+        tk.Label(
+            mode_dialog,
+            text="Select Capture Mode",
+            font=("Arial", 14, "bold"),
+            bg="white"
+        ).pack(pady=20)
         
-        # Show the capture button
-        self.capture_btn.pack(pady=10)
-        self.capture_btn.config(state=tk.DISABLED, bg="#757575")  # Initially disabled
+        mode_var = tk.StringVar(value="manual")
         
-        messagebox.showinfo(
-            "Add Product",
-            "STEP 1: Capture Barcode Image\n\n" +
-            "1. Point camera at barcode\n" +
-            "2. Wait for GREEN box around barcode\n" +
-            "3. Click CAPTURE IMAGE button (turns green when ready)\n\n" +
-            "The image will be saved to /home/pi/Pictures"
-        )
+        tk.Radiobutton(
+            mode_dialog,
+            text="Manual Capture (Click button when ready)",
+            variable=mode_var,
+            value="manual",
+            font=("Arial", 12),
+            bg="white"
+        ).pack(pady=5)
         
-        self.scanning = True
-        threading.Thread(target=self.add_product_camera_loop, daemon=True).start()
+        tk.Radiobutton(
+            mode_dialog,
+            text="Auto Capture (Captures immediately on detection)",
+            variable=mode_var,
+            value="auto",
+            font=("Arial", 12),
+            bg="white"
+        ).pack(pady=5)
+        
+        def start_capture():
+            capture_mode = mode_var.get()
+            mode_dialog.destroy()
+            
+            self.adding_product = True
+            self.captured_image = None
+            self.captured_barcode = None
+            self.capture_ready = False
+            self.detected_barcode = None
+            
+            # Start camera to capture barcode
+            self.start_camera_btn.config(state=tk.DISABLED)
+            self.stop_camera_btn.config(state=tk.NORMAL)
+            
+            if capture_mode == "manual":
+                # Show the capture button for manual mode
+                self.capture_btn.pack(pady=10)
+                self.capture_btn.config(state=tk.DISABLED, bg="#757575")
+                
+                messagebox.showinfo(
+                    "Manual Capture Mode",
+                    "1. Point camera at barcode\n" +
+                    "2. Button turns green when barcode detected\n" +
+                    "3. Click CAPTURE IMAGE button\n\n" +
+                    "Saves to: /home/pi/Pictures"
+                )
+                threading.Thread(target=lambda: self.add_product_camera_loop(auto_capture=False), daemon=True).start()
+            else:
+                messagebox.showinfo(
+                    "Auto Capture Mode",
+                    "Point camera at barcode.\n" +
+                    "Image captures automatically on detection.\n\n" +
+                    "Saves to: /home/pi/Pictures"
+                )
+                threading.Thread(target=lambda: self.add_product_camera_loop(auto_capture=True), daemon=True).start()
+            
+            self.scanning = True
+        
+        tk.Button(
+            mode_dialog,
+            text="Start",
+            command=start_capture,
+            bg="#4caf50",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            width=15,
+            height=2
+        ).pack(pady=20)
     
-    def add_product_camera_loop(self):
-        """Camera loop for adding products - MANUAL capture with button"""
+    def add_product_camera_loop(self, auto_capture=False):
+        """Camera loop for adding products - supports both auto and manual capture"""
         self.camera = cv2.VideoCapture(0)
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
-        while self.scanning and self.adding_product:
+        captured = False
+        no_barcode_count = 0
+        
+        while self.scanning and self.adding_product and not captured:
             ret, frame = self.camera.read()
             if not ret:
                 break
@@ -804,31 +914,59 @@ class NutritionScannerApp:
             if barcodes:
                 barcode = barcodes[0]
                 barcode_data = barcode.data.decode('utf-8')
+                barcode_type = barcode.type
                 
-                # Remove leading zero for UPC-A
-                if len(barcode_data) == 13 and barcode_data.startswith('0'):
+                print(f"INFO: Detected barcode: {barcode_data} (Type: {barcode_type})")
+                
+                # Remove leading zero ONLY for 13-digit numeric codes (EAN-13 to UPC-A conversion)
+                if len(barcode_data) == 13 and barcode_data.isdigit() and barcode_data.startswith('0'):
                     barcode_data = barcode_data[1:]
+                    print(f"INFO: Converted to UPC-A: {barcode_data}")
                 
                 # Store detected barcode and frame
                 self.detected_barcode = barcode_data
                 self.captured_image = original_frame
                 self.capture_ready = True
                 
-                # Draw green rectangle
+                # Draw rectangle around barcode
                 (x, y, w, h) = barcode.rect
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
-                cv2.putText(frame, barcode_data, (x, y - 10),
+                cv2.putText(frame, f"{barcode_data} ({barcode_type})", (x, y - 10),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
-                # Update status and enable capture button
-                self.capture_status_label.config(text="BARCODE DETECTED - Ready to capture!", fg="green")
-                self.capture_btn.config(state=tk.NORMAL, bg="#4caf50")
+                if auto_capture:
+                    # Auto capture immediately
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    image_filename = f"{barcode_data}_{timestamp}.jpg"
+                    image_path = os.path.join(PICTURES_DIR, image_filename)
+                    
+                    cv2.imwrite(image_path, original_frame)
+                    print(f"INFO: Auto-captured and saved to {image_path}")
+                    
+                    captured = True
+                    self.scanning = False
+                    self.adding_product = False
+                    
+                    # Open the add product form
+                    self.root.after(0, self.open_add_product_form, barcode_data, image_path)
+                else:
+                    # Manual mode - enable capture button
+                    self.capture_status_label.config(text=f"Barcode detected: {barcode_data}", fg="green")
+                    self.capture_btn.config(state=tk.NORMAL, bg="#4caf50")
+                
+                no_barcode_count = 0
             else:
                 self.capture_ready = False
                 self.detected_barcode = None
                 self.captured_image = None
-                self.capture_status_label.config(text="Position barcode in view", fg="#666")
-                self.capture_btn.config(state=tk.DISABLED, bg="#757575")
+                no_barcode_count += 1
+                
+                # Show "No barcode found" message every 30 frames (about 1 second)
+                if no_barcode_count % 30 == 0:
+                    self.capture_status_label.config(text="No barcode found - adjust camera position", fg="#ff9800")
+                
+                if not auto_capture:
+                    self.capture_btn.config(state=tk.DISABLED, bg="#757575")
             
             # Display frame
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -846,7 +984,7 @@ class NutritionScannerApp:
             self.start_camera_btn.config(state=tk.NORMAL)
             self.stop_camera_btn.config(state=tk.DISABLED)
         
-        # Hide the capture button
+        # Hide the capture button if it was shown
         self.capture_btn.pack_forget()
         self.capture_status_label.config(text="")
     
