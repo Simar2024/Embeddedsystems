@@ -1582,7 +1582,7 @@ class NutritionScannerApp:
             self.allergen_warnings = self.get_allergen_warnings()
             self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
         else:
-            self.display_error(f"Product not found for barcode: {barcode}")
+            self.display_error(f"No barcode found: {barcode}")
             self.set_led_color(OFF)
     
     def get_product_data(self, barcode):
