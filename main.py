@@ -365,6 +365,23 @@ class NutritionScannerApp:
                 sense.clear(color)
                 time.sleep(0.1)
     
+    def _update_camera_label_from_array(self, frame):
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_pil = Image.fromarray(frame_rgb)
+        frame_pil = frame_pil.resize((480, 360))
+        frame_tk = ImageTk.PhotoImage(frame_pil)
+        self.camera_label.config(image=frame_tk, text="")
+        self.camera_label.image = frame_tk
+    
+    def _set_capture_status_safe(self, text, color):
+        self.capture_status_label.config(text=text, fg=color)
+    
+    def _enable_capture_button(self, enabled):
+        if enabled:
+            self.capture_btn.config(state=tk.NORMAL, bg="#4caf50")
+        else:
+            self.capture_btn.config(state=tk.DISABLED, bg="#757575")
+    
     def start_joystick_listener(self):
         """Start listening to joystick events"""
         if not SENSEHAT_AVAILABLE or not self.joystick_enabled:
@@ -844,9 +861,12 @@ class NutritionScannerApp:
         # Ask user for capture mode
         mode_dialog = tk.Toplevel(self.root)
         mode_dialog.title("Choose Capture Mode")
-        mode_dialog.geometry("400x200")
+        mode_dialog.geometry("420x250")
         mode_dialog.configure(bg="white")
+        mode_dialog.transient(self.root)
+        mode_dialog.lift()
         mode_dialog.grab_set()
+        mode_dialog.focus_force()
         
         tk.Label(
             mode_dialog,
@@ -855,7 +875,7 @@ class NutritionScannerApp:
             bg="white"
         ).pack(pady=20)
         
-        mode_var = tk.StringVar(value="manual")
+        mode_var = tk.StringVar(master=mode_dialog, value="manual")
         
         tk.Radiobutton(
             mode_dialog,
@@ -877,6 +897,7 @@ class NutritionScannerApp:
         
         def start_capture():
             capture_mode = mode_var.get()
+            print(f"INFO: Selected capture mode: {capture_mode}")
             mode_dialog.destroy()
             
             self.adding_product = True
@@ -923,7 +944,33 @@ class NutritionScannerApp:
     
     def add_product_camera_loop(self, auto_capture=False):
         """Camera loop for adding products - supports both auto and manual capture"""
-        self.camera = cv2.VideoCapture(0)
+        chosen_idx = None
+        backends = [None, getattr(cv2, 'CAP_DSHOW', None), getattr(cv2, 'CAP_MSMF', None)]
+        for idx in [0, 1, 2, 3]:
+            for backend in backends:
+                try:
+                    if backend is None:
+                        print(f"INFO: Trying camera index {idx} with default backend...")
+                        cam = cv2.VideoCapture(idx)
+                    else:
+                        print(f"INFO: Trying camera index {idx} with backend {backend}...")
+                        cam = cv2.VideoCapture(idx, backend)
+                except Exception as e:
+                    print(f"WARN: VideoCapture open attempt failed: idx={idx}, backend={backend}, err={e}")
+                    cam = None
+                if cam is not None and cam.isOpened():
+                    self.camera = cam
+                    chosen_idx = idx
+                    break
+            if chosen_idx is not None:
+                break
+        if not hasattr(self, 'camera') or self.camera is None or not self.camera.isOpened():
+            print("ERROR: No camera device opened after trying indices 0-3 with multiple backends")
+            self.root.after(0, lambda: messagebox.showerror("Camera Error", "Could not open camera. Please ensure a camera is connected and not in use."))
+            self.scanning = False
+            self.adding_product = False
+            return
+        print(f"SUCCESS: Opened camera at index {chosen_idx}")
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
@@ -980,8 +1027,8 @@ class NutritionScannerApp:
                     self.root.after(0, self.open_add_product_form, barcode_data, image_path)
                 else:
                     # Manual mode - enable capture button
-                    self.capture_status_label.config(text=f"Barcode detected: {barcode_data}", fg="green")
-                    self.capture_btn.config(state=tk.NORMAL, bg="#4caf50")
+                    self.root.after(0, self._set_capture_status_safe, f"Barcode detected: {barcode_data}", "green")
+                    self.root.after(0, self._enable_capture_button, True)
                 
                 no_barcode_count = 0
             else:
@@ -990,30 +1037,18 @@ class NutritionScannerApp:
                 self.captured_image = None
                 no_barcode_count += 1
                 
-                # Show "No barcode found" message every 30 frames (about 1 second)
                 if no_barcode_count % 30 == 0:
-                    self.capture_status_label.config(text="No barcode found - adjust camera position", fg="#ff9800")
-                
+                    self.root.after(0, self._set_capture_status_safe, "No barcode found - adjust camera position", "#ff9800")
                 if not auto_capture:
-                    self.capture_btn.config(state=tk.DISABLED, bg="#757575")
+                    self.root.after(0, self._enable_capture_button, False)
             
-            # Display frame
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_pil = Image.fromarray(frame_rgb)
-            frame_pil = frame_pil.resize((480, 360))
-            frame_tk = ImageTk.PhotoImage(frame_pil)
-            
-            self.camera_label.config(image=frame_tk, text="")
-            self.camera_label.image = frame_tk
+            self.root.after(0, self._update_camera_label_from_array, frame.copy())
         
-        # Cleanup
         if self.camera:
             self.camera.release()
             self.camera = None
-            self.capture_status_label.config(text="")
-        
-        # Hide the capture button if it was shown
-        self.capture_btn.pack_forget()
+            self.root.after(0, lambda: self.capture_status_label.config(text=""))
+        self.root.after(0, self.capture_btn.pack_forget)
     
     def capture_product_image(self, event=None):
         """Capture and save product image when button is clicked"""
