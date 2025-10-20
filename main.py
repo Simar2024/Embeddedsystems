@@ -1,4 +1,28 @@
-"""
+def start_capture():
+            capture_mode = mode_var.get()
+            mode_dialog.destroy()
+            
+            self.adding_product = True
+            self.captured_image = None
+            self.captured_barcode = None
+            self.capture_ready = False
+            self.detected_barcode = None
+            self.scanning = True  # MOVED THIS UP - needs to be true BEFORE thread starts
+            
+            # Start camera to capture barcode
+            self.start_camera_btn.config(state=tk.DISABLED)
+            self.stop_camera_btn.config(state=tk.NORMAL)
+            
+            if capture_mode == "manual":
+                # Show the capture button for manual mode
+                self.capture_btn.pack(pady=10)
+                self.capture_btn.config(state=tk.DISABLED, bg="#757575")
+                
+                messagebox.showinfo(
+                    "Manual Capture Mode",
+                    "1. Point camera at barcode\n" +
+                    "2. Button turns green when barcode detected\n" +
+                    "3. Click CAPTURE IMAGE button\n\"""
 Smart Barcode Nutrition Scanner
 Main Application - Raspberry Pi with SenseHat + Joystick
 Python 3.7+
@@ -986,6 +1010,7 @@ class NutritionScannerApp:
             self.captured_barcode = None
             self.capture_ready = False
             self.detected_barcode = None
+            self.scanning = True  # Set this BEFORE starting thread
             
             # Start camera to capture barcode
             self.start_camera_btn.config(state=tk.DISABLED)
@@ -1012,8 +1037,6 @@ class NutritionScannerApp:
                     "Saves to: /home/pi/Pictures"
                 )
                 threading.Thread(target=lambda: self.add_product_camera_loop(auto_capture=True), daemon=True).start()
-            
-            self.scanning = True
         
         tk.Button(
             mode_dialog,
