@@ -597,6 +597,20 @@ class NutritionScannerApp:
         self.capture_status_label = tk.Label(left_frame, text="", font=("Arial", 12), bg="white", fg="#2196f3")
         self.capture_status_label.pack()
         
+        # Capture button (initially hidden)
+        self.capture_btn = tk.Button(
+            left_frame,
+            text="CAPTURE IMAGE",
+            command=self.capture_product_image,
+            bg="#4caf50",
+            fg="white",
+            font=("Arial", 14, "bold"),
+            width=20,
+            height=2,
+            cursor="hand2"
+        )
+        # Don't pack it yet - will be shown only during add product mode
+        
         # Buttons
         btn_frame = tk.Frame(left_frame, bg="white")
         btn_frame.pack(pady=15)
@@ -755,12 +769,16 @@ class NutritionScannerApp:
         self.start_camera_btn.config(state=tk.DISABLED)
         self.stop_camera_btn.config(state=tk.NORMAL)
         
+        # Show the capture button
+        self.capture_btn.pack(pady=10)
+        self.capture_btn.config(state=tk.DISABLED, bg="#757575")  # Initially disabled
+        
         messagebox.showinfo(
             "Add Product",
             "STEP 1: Capture Barcode Image\n\n" +
             "1. Point camera at barcode\n" +
             "2. Wait for GREEN box around barcode\n" +
-            "3. Press ENTER to capture and save image\n\n" +
+            "3. Click CAPTURE IMAGE button (turns green when ready)\n\n" +
             "The image will be saved to /home/pi/Pictures"
         )
         
@@ -768,13 +786,10 @@ class NutritionScannerApp:
         threading.Thread(target=self.add_product_camera_loop, daemon=True).start()
     
     def add_product_camera_loop(self):
-        """Camera loop for adding products - MANUAL capture with Enter key"""
+        """Camera loop for adding products - MANUAL capture with button"""
         self.camera = cv2.VideoCapture(0)
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
-        # Bind Enter key for manual capture
-        self.root.bind('<Return>', self.capture_product_image)
         
         while self.scanning and self.adding_product:
             ret, frame = self.camera.read()
@@ -805,11 +820,15 @@ class NutritionScannerApp:
                 cv2.putText(frame, barcode_data, (x, y - 10),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
-                # Update status
-                self.capture_status_label.config(text="BARCODE DETECTED - Press ENTER to capture", fg="green")
+                # Update status and enable capture button
+                self.capture_status_label.config(text="BARCODE DETECTED - Ready to capture!", fg="green")
+                self.capture_btn.config(state=tk.NORMAL, bg="#4caf50")
             else:
                 self.capture_ready = False
+                self.detected_barcode = None
+                self.captured_image = None
                 self.capture_status_label.config(text="Position barcode in view", fg="#666")
+                self.capture_btn.config(state=tk.DISABLED, bg="#757575")
             
             # Display frame
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -821,15 +840,18 @@ class NutritionScannerApp:
             self.camera_label.image = frame_tk
         
         # Cleanup
-        self.root.unbind('<Return>')
         if self.camera:
             self.camera.release()
             self.camera = None
             self.start_camera_btn.config(state=tk.NORMAL)
             self.stop_camera_btn.config(state=tk.DISABLED)
+        
+        # Hide the capture button
+        self.capture_btn.pack_forget()
+        self.capture_status_label.config(text="")
     
     def capture_product_image(self, event=None):
-        """Capture and save product image when Enter is pressed"""
+        """Capture and save product image when button is clicked"""
         if self.capture_ready and self.detected_barcode and self.captured_image is not None:
             # Save image to /home/pi/Pictures
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -839,10 +861,11 @@ class NutritionScannerApp:
             cv2.imwrite(image_path, self.captured_image)
             print(f"INFO: Saved image to {image_path}")
             
-            # Stop scanning and open form
+            # Stop scanning and hide capture button
             self.scanning = False
             self.adding_product = False
-            self.capture_status_label.config(text="")
+            self.capture_status_label.config(text="Image captured successfully!", fg="#4caf50")
+            self.capture_btn.pack_forget()
             
             # Open the add product form
             self.root.after(0, self.open_add_product_form, self.detected_barcode, image_path)
