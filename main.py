@@ -679,20 +679,34 @@ class NutritionScannerApp:
         stats_btn.grid(row=1, column=1, padx=5, pady=5)
         self.menu_items.append(stats_btn)
         
-        # Add Product button
-        add_product_btn = tk.Button(
+        # Add Product buttons (Barcode/Image)
+        add_product_barcode_btn = tk.Button(
             btn_frame,
-            text="Add New\nProduct",
-            command=self.start_add_product,
+            text="Add Product\n(Barcode)",
+            command=self.start_add_product_with_barcode,
             bg="#ff5722",
             fg="white",
             font=("Arial", 13, "bold"),
-            width=26,
+            width=12,
             height=3,
             cursor="hand2"
         )
-        add_product_btn.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
-        self.menu_items.append(add_product_btn)
+        add_product_barcode_btn.grid(row=2, column=0, padx=5, pady=5)
+        self.menu_items.append(add_product_barcode_btn)
+
+        add_product_image_btn = tk.Button(
+            btn_frame,
+            text="Add Product\n(Image)",
+            command=self.start_add_product_with_image,
+            bg="#ff7043",
+            fg="white",
+            font=("Arial", 13, "bold"),
+            width=12,
+            height=3,
+            cursor="hand2"
+        )
+        add_product_image_btn.grid(row=2, column=1, padx=5, pady=5)
+        self.menu_items.append(add_product_image_btn)
         
         # Right panel - Results
         right_frame = tk.Frame(main_frame, bg="white", relief=tk.RAISED, bd=2)
@@ -779,6 +793,60 @@ class NutritionScannerApp:
             font=("Arial", 16, "bold"),
             bg="white"
         ).pack(pady=20)
+
+    def start_add_product_with_barcode(self):
+        """Add product by entering a barcode (no camera)"""
+        if not self.is_online:
+            messagebox.showerror(
+                "Offline Mode",
+                "You must be ONLINE to add new products to the database.\n\nPlease connect to the internet and try again."
+            )
+            return
+        barcode = simpledialog.askstring("Add Product (Barcode)", "Enter Barcode:")
+        if not barcode:
+            return
+        if len(barcode) == 13 and barcode.startswith('0'):
+            barcode = barcode[1:]
+        self.open_add_product_form(barcode, None)
+
+    def start_add_product_with_image(self):
+        """Add product by selecting an image; decode barcode or prompt for it"""
+        if not self.is_online:
+            messagebox.showerror(
+                "Offline Mode",
+                "You must be ONLINE to add new products to the database.\n\nPlease connect to the internet and try again."
+            )
+            return
+        file_path = filedialog.askopenfilename(
+            title="Select Product Image",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
+                ("All files", "*.*")
+            ]
+        )
+        if not file_path:
+            return
+        image = cv2.imread(file_path)
+        if image is None:
+            messagebox.showerror("Error", "Could not read image file. Please select a valid image.")
+            return
+        barcodes = pyzbar.decode(image)
+        if barcodes:
+            barcode = barcodes[0].data.decode('utf-8')
+            if len(barcode) == 13 and barcode.startswith('0'):
+                barcode = barcode[1:]
+            self.open_add_product_form(barcode, file_path)
+        else:
+            manual_barcode = simpledialog.askstring(
+                "Enter Barcode",
+                "No barcode detected in the image.\n\nEnter the barcode manually:"
+            )
+            if manual_barcode:
+                if len(manual_barcode) == 13 and manual_barcode.startswith('0'):
+                    manual_barcode = manual_barcode[1:]
+                self.open_add_product_form(manual_barcode, file_path)
+            else:
+                messagebox.showinfo("Cancelled", "Add Product (Image) cancelled.")
         
         tk.Label(
             settings_window,
@@ -1158,13 +1226,14 @@ class NutritionScannerApp:
             fg="#666"
         ).pack(pady=5)
         
-        tk.Label(
-            form_frame,
-            text=f"Image saved: {os.path.basename(image_path)}",
-            font=("Arial", 10),
-            bg="white",
-            fg="#666"
-        ).pack(pady=5)
+        if image_path:
+            tk.Label(
+                form_frame,
+                text=f"Image: {os.path.basename(image_path)}",
+                font=("Arial", 10),
+                bg="white",
+                fg="#666"
+            ).pack(pady=5)
         
         # Form fields
         fields = {}
