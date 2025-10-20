@@ -1054,10 +1054,17 @@ class NutritionScannerApp:
     
     def capture_product_image(self, event=None):
         """Capture and save product image when button is clicked"""
-        # Determine which frame and barcode to use
+        # Determine which frame and barcode to use; prefer a fresh grab from the camera
         frame_to_save = None
         barcode = None
-        if self.capture_ready and self.detected_barcode and self.captured_image is not None:
+        fresh_frame = None
+        if getattr(self, 'camera', None) is not None:
+            ret, frame = self.camera.read()
+            if ret:
+                fresh_frame = frame.copy()
+        if fresh_frame is not None:
+            frame_to_save = fresh_frame
+        elif self.capture_ready and self.detected_barcode and self.captured_image is not None:
             frame_to_save = self.captured_image
             barcode = self.detected_barcode
         elif self.latest_frame is not None:
@@ -1066,12 +1073,10 @@ class NutritionScannerApp:
             messagebox.showerror("Capture Error", "No camera frame available yet. Please try again.")
             return
 
-        # Save image to /home/pi/Pictures
+        # Create default filename and save immediately
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_base = f"{barcode}_{timestamp}" if barcode else f"manual_{timestamp}"
-        user_base = simpledialog.askstring("Save Image", "Enter file name (without extension):", initialvalue=default_base)
-        base = user_base.strip() if user_base else default_base
-        safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in base).strip().replace(' ', '_')
+        safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in default_base).strip().replace(' ', '_')
         image_filename = f"{safe_base}.jpg"
         image_path = os.path.join(PICTURES_DIR, image_filename)
         counter = 1
@@ -1079,9 +1084,28 @@ class NutritionScannerApp:
             image_filename = f"{safe_base}_{counter}.jpg"
             image_path = os.path.join(PICTURES_DIR, image_filename)
             counter += 1
-
         cv2.imwrite(image_path, frame_to_save)
         print(f"INFO: Saved image to {image_path}")
+
+        # Optional rename after saving
+        new_base = simpledialog.askstring("Save Image", "Enter file name (without extension):", initialvalue=safe_base)
+        if new_base:
+            new_base = new_base.strip()
+        if new_base and new_base != safe_base:
+            new_safe = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in new_base).strip().replace(' ', '_')
+            new_filename = f"{new_safe}.jpg"
+            new_path = os.path.join(PICTURES_DIR, new_filename)
+            c = 1
+            while os.path.exists(new_path):
+                new_filename = f"{new_safe}_{c}.jpg"
+                new_path = os.path.join(PICTURES_DIR, new_filename)
+                c += 1
+            try:
+                os.replace(image_path, new_path)
+                image_path = new_path
+                print(f"INFO: Renamed image to {image_path}")
+            except Exception as e:
+                print(f"WARN: Could not rename image: {e}")
 
         # Stop scanning and hide capture button
         self.scanning = False
