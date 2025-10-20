@@ -1,54 +1,4 @@
-def start_add_product(self):
-        """Start the process of adding a new product"""
-        if not self.is_online:
-            messagebox.showerror(
-                "Offline Mode",
-                "You must be ONLINE to add new products to the database.\n\n" +
-                "Please connect to the internet and try again."
-            )
-            return
-        
-        self.adding_product = True
-        self.captured_image = None
-        self.captured_barcode = None
-        
-        # Start camera to capture barcode
-        self.start_camera_btn.config(state=tk.DISABLED)
-        self.stop_camera_btn.config(state=tk.NORMAL)
-        
-        messagebox.showinfo(
-            "Add Product",
-            "AUTO-CAPTURE MODE\n\n" +
-            "Point camera at any barcode.\n" +
-            "Image will be captured automatically when detected.\n\n" +
-            "Saves to: /home/pi/Pictures"
-        )
-        
-        self.scanning = True
-        threading.Thread(target=self.add_product_camera_loop, daemon=True).start()
-    
-    def add_product_camera_loop(self):
-        """Camera loop for adding products - AUTO capture on detection"""
-        self.camera = cv2.VideoCapture(0)
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
-        captured = False
-        
-        while self.scanning and self.adding_product and not captured:
-            ret, frame = self.camera.read()
-            if not ret:
-                break
-            
-            barcodes = pyzbar.decode(frame)
-            
-            if barcodes and not captured:
-                barcode = barcodes[0]
-                barcode_data = barcode.data.decode('utf-8')
-                print(f"INFO: Detected barcode: {barcode_data} (Type: {barcode.type})")
-                
-                # Remove leading zero ONLY for numeric UPC-A codes
-                if barcode_data.is"""
+"""
 Smart Barcode Nutrition Scanner
 Main Application - Raspberry Pi with SenseHat + Joystick
 Python 3.7+
@@ -148,6 +98,7 @@ ARROW_RIGHT = [
     OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
 ]
 
+
 class NutritionScannerApp:
     def __init__(self, root):
         self.root = root
@@ -206,7 +157,7 @@ class NutritionScannerApp:
             print("SUCCESS: SenseHat LED matrix ready")
             if self.joystick_enabled:
                 print("SUCCESS: Joystick navigation enabled - UP/DOWN to navigate, MIDDLE to select")
-        
+    
     def init_sqlite_db(self):
         """Initialize SQLite database for offline cache"""
         conn = sqlite3.connect(SQLITE_DB)
@@ -255,7 +206,7 @@ class NutritionScannerApp:
         conn.commit()
         conn.close()
         print("SUCCESS: SQLite database initialized")
-        
+    
     def load_user_allergens(self):
         """Load user's allergen preferences"""
         conn = sqlite3.connect(SQLITE_DB)
@@ -268,7 +219,7 @@ class NutritionScannerApp:
         if row and row[0]:
             return set(row[0].split(','))
         return set()
-        
+    
     def save_user_allergens(self, allergens):
         """Save user's allergen preferences"""
         conn = sqlite3.connect(SQLITE_DB)
@@ -283,7 +234,7 @@ class NutritionScannerApp:
         conn.commit()
         conn.close()
         self.user_allergens = allergens
-        
+    
     def get_total_scans(self):
         """Get total number of scans"""
         conn = sqlite3.connect(SQLITE_DB)
@@ -310,7 +261,7 @@ class NutritionScannerApp:
         count = cursor.fetchone()[0]
         conn.close()
         return count
-        
+    
     def check_connection(self):
         """Check if we have internet connection to API"""
         try:
@@ -353,7 +304,7 @@ class NutritionScannerApp:
         self.led_animation_running = False
         if self.led_thread and self.led_thread.is_alive():
             time.sleep(0.1)
-            
+        
         if pattern == 'solid':
             sense.clear(color)
         elif pattern == 'flash':
@@ -422,7 +373,7 @@ class NutritionScannerApp:
         self.joystick_running = True
         self.joystick_thread = threading.Thread(target=self._joystick_loop, daemon=True)
         self.joystick_thread.start()
-        
+    
     def _joystick_loop(self):
         """Joystick event loop - runs in separate thread"""
         while self.joystick_running and self.joystick_enabled:
@@ -749,7 +700,7 @@ class NutritionScannerApp:
         stats_btn.grid(row=2, column=1, padx=5, pady=5)
         self.menu_items.append(stats_btn)
         
-        # NEW: Add Product button
+        # Add Product button
         add_product_btn = tk.Button(
             btn_frame,
             text="Add New\nProduct",
@@ -798,6 +749,189 @@ class NutritionScannerApp:
         self.current_menu_index = 0
         if self.menu_items:
             self.highlight_menu_item()
+    
+    def show_welcome_message(self):
+        """Show welcome message"""
+        for widget in self.results_frame.winfo_children():
+            widget.destroy()
+        
+        welcome_text = "Welcome!\n\nScan a barcode to get started\n\nSet your allergens in Settings"
+        welcome_text += "\n\nMouse control is always enabled"
+        if SENSEHAT_AVAILABLE:
+            welcome_text += "\nToggle joystick control in title bar"
+        
+        welcome = tk.Label(
+            self.results_frame,
+            text=welcome_text,
+            font=("Arial", 13),
+            bg="white",
+            fg="#666"
+        )
+        welcome.pack(pady=50)
+    
+    def refresh_connection(self):
+        """Refresh connection status"""
+        self.is_online = self.check_connection()
+        status_color = "#4caf50" if self.is_online else "#ff9800"
+        status_text = "ONLINE" if self.is_online else "OFFLINE"
+        self.status_label.config(text=status_text, fg=status_color)
+        
+        if SENSEHAT_AVAILABLE:
+            if self.is_online:
+                self.set_led_color(GREEN, 'pulse')
+            else:
+                self.set_led_color(ORANGE, 'pulse')
+        
+        mode = "ONLINE" if self.is_online else "OFFLINE"
+        messagebox.showinfo("Connection Status", f"Mode: {mode}")
+    
+    def open_settings(self):
+        """Open allergen settings dialog"""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Settings")
+        settings_window.geometry("500x650")
+        settings_window.configure(bg="white")
+        settings_window.grab_set()
+        
+        tk.Label(
+            settings_window,
+            text="My Allergen Preferences",
+            font=("Arial", 16, "bold"),
+            bg="white"
+        ).pack(pady=20)
+        
+        tk.Label(
+            settings_window,
+            text="Select allergens you want to be warned about:",
+            font=("Arial", 11),
+            bg="white",
+            fg="#666"
+        ).pack(pady=5)
+        
+        allergen_list = [
+            "dairy", "nuts", "peanuts", "gluten", "soy",
+            "eggs", "fish", "shellfish", "coconut", "sesame"
+        ]
+        
+        allergen_vars = {}
+        check_frame = tk.Frame(settings_window, bg="white")
+        check_frame.pack(pady=20)
+        
+        for i, allergen in enumerate(allergen_list):
+            var = tk.BooleanVar(value=allergen in self.user_allergens)
+            allergen_vars[allergen] = var
+            
+            cb = tk.Checkbutton(
+                check_frame,
+                text=allergen.capitalize(),
+                variable=var,
+                font=("Arial", 12),
+                bg="white",
+                selectcolor="#4caf50",
+                cursor="hand2"
+            )
+            cb.grid(row=i//2, column=i%2, sticky='w', padx=20, pady=5)
+        
+        def save_settings():
+            selected_allergens = {allergen for allergen, var in allergen_vars.items() if var.get()}
+            self.save_user_allergens(selected_allergens)
+            
+            allergen_count = len(selected_allergens)
+            allergen_text = f"Allergens: {allergen_count} Set" if allergen_count > 0 else "No Allergens Set"
+            self.allergen_status_label.config(
+                text=allergen_text,
+                fg="#f44336" if allergen_count > 0 else "#666"
+            )
+            
+            messagebox.showinfo("Success", f"Saved {allergen_count} allergen preference(s)")
+            settings_window.destroy()
+        
+        tk.Button(
+            settings_window,
+            text="Save Settings",
+            command=save_settings,
+            bg="#4caf50",
+            fg="white",
+            font=("Arial", 13, "bold"),
+            width=20,
+            height=2,
+            cursor="hand2"
+        ).pack(pady=20)
+        
+        tk.Button(
+            settings_window,
+            text="Cancel",
+            command=settings_window.destroy,
+            bg="#757575",
+            fg="white",
+            font=("Arial", 11),
+            width=20,
+            cursor="hand2"
+        ).pack(pady=5)
+    
+    def start_camera_scan(self):
+        """Start camera for regular scanning"""
+        self.scanning = True
+        self.adding_product = False  # Make sure we're not in add product mode
+        self.start_camera_btn.config(state=tk.DISABLED)
+        self.stop_camera_btn.config(state=tk.NORMAL)
+        
+        if SENSEHAT_AVAILABLE:
+            self.set_led_color(BLUE, 'pulse')
+        
+        threading.Thread(target=self.camera_scan_loop, daemon=True).start()
+    
+    def camera_scan_loop(self):
+        """Camera loop for regular scanning - auto-processes barcodes"""
+        self.camera = cv2.VideoCapture(0)
+        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        while self.scanning and not self.adding_product:
+            ret, frame = self.camera.read()
+            if not ret:
+                break
+            
+            barcodes = pyzbar.decode(frame)
+            
+            for barcode in barcodes:
+                barcode_data = barcode.data.decode('utf-8')
+                (x, y, w, h) = barcode.rect
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
+                cv2.putText(frame, barcode_data, (x, y - 10),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                self.scanning = False
+                self.root.after(0, self.process_barcode, barcode_data)
+                break
+            
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_pil = Image.fromarray(frame_rgb)
+            frame_pil = frame_pil.resize((480, 360))
+            frame_tk = ImageTk.PhotoImage(frame_pil)
+            
+            self.camera_label.config(image=frame_tk, text="")
+            self.camera_label.image = frame_tk
+        
+        if self.camera:
+            self.camera.release()
+            self.camera = None
+    
+    def stop_camera_scan(self):
+        """Stop camera"""
+        self.scanning = False
+        self.adding_product = False
+        self.capture_ready = False
+        self.start_camera_btn.config(state=tk.NORMAL)
+        self.stop_camera_btn.config(state=tk.DISABLED)
+        self.camera_label.config(image='', text="Camera Stopped", bg="black", fg="white")
+        self.capture_status_label.config(text="")
+        
+        # Hide capture button if it's visible
+        self.capture_btn.pack_forget()
+        
+        if SENSEHAT_AVAILABLE and self.joystick_enabled:
+            self.show_arrow_pattern(ARROW_UP)
     
     def start_add_product(self):
         """Start the process of adding a new product"""
@@ -1170,7 +1304,7 @@ class NutritionScannerApp:
                     self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
                 else:
                     messagebox.showerror("Error", f"Failed to add product:\n\n{result.get('error')}")
-                    
+            
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to connect to API:\n\n{str(e)}")
         
@@ -1202,89 +1336,107 @@ class NutritionScannerApp:
             cursor="hand2"
         ).pack(side=tk.LEFT, padx=10)
     
-    def open_settings(self):
-        """Open allergen settings dialog"""
-        settings_window = tk.Toplevel(self.root)
-        settings_window.title("Settings")
-        settings_window.geometry("500x650")
-        settings_window.configure(bg="white")
-        settings_window.grab_set()
+    def upload_image(self):
+        """Upload image and scan for barcode"""
+        print("INFO: Opening file dialog...")
+        file_path = filedialog.askopenfilename(
+            title="Select Barcode Image",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if not file_path:
+            print("INFO: No file selected")
+            return
+        
+        print(f"INFO: Selected file: {file_path}")
+        
+        try:
+            image = cv2.imread(file_path)
+            
+            if image is None:
+                print("ERROR: Could not read image file")
+                messagebox.showerror("Error", "Could not read image file.\nPlease select a valid image.")
+                return
+            
+            print(f"SUCCESS: Image loaded: {image.shape}")
+            
+            display_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            display_pil = Image.fromarray(display_image)
+            display_pil = display_pil.resize((480, 360), Image.Resampling.LANCZOS)
+            display_tk = ImageTk.PhotoImage(display_pil)
+            
+            self.camera_label.config(image=display_tk, text="")
+            self.camera_label.image = display_tk
+            self.root.update()
+            
+            print("INFO: Decoding barcodes...")
+            
+            barcodes = pyzbar.decode(image)
+            
+            if barcodes:
+                barcode_data = barcodes[0].data.decode('utf-8')
+                print(f"SUCCESS: Barcode found: {barcode_data}")
+                self.process_barcode(barcode_data)
+            else:
+                print("ERROR: No barcode detected in image")
+                messagebox.showerror(
+                    "No Barcode Found",
+                    "No barcode detected in the image.\n\n" +
+                    "Tips:\n" +
+                    "- Ensure the barcode is clear and in focus\n" +
+                    "- Try better lighting conditions\n" +
+                    "- Use a higher resolution image\n" +
+                    "- Make sure the entire barcode is visible"
+                )
+        
+        except Exception as e:
+            print(f"ERROR: Error processing image: {e}")
+            messagebox.showerror("Error", f"Failed to process image:\n\n{str(e)}")
+    
+    def manual_entry(self):
+        """Manual barcode entry"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Manual Barcode Entry")
+        dialog.geometry("400x180")
+        dialog.configure(bg="white")
+        dialog.grab_set()
         
         tk.Label(
-            settings_window,
-            text="My Allergen Preferences",
-            font=("Arial", 16, "bold"),
+            dialog,
+            text="Enter Barcode:",
+            font=("Arial", 12),
             bg="white"
-        ).pack(pady=20)
+        ).pack(pady=10)
         
-        tk.Label(
-            settings_window,
-            text="Select allergens you want to be warned about:",
-            font=("Arial", 11),
-            bg="white",
-            fg="#666"
-        ).pack(pady=5)
+        entry = tk.Entry(dialog, font=("Arial", 14), width=25)
+        entry.pack(pady=10)
+        entry.focus()
         
-        allergen_list = [
-            "dairy", "nuts", "peanuts", "gluten", "soy", 
-            "eggs", "fish", "shellfish", "coconut", "sesame"
-        ]
+        def submit():
+            barcode = entry.get().strip()
+            if barcode:
+                dialog.destroy()
+                self.process_barcode(barcode)
+            else:
+                messagebox.showerror("Error", "Please enter a barcode")
         
-        allergen_vars = {}
-        check_frame = tk.Frame(settings_window, bg="white")
-        check_frame.pack(pady=20)
-        
-        for i, allergen in enumerate(allergen_list):
-            var = tk.BooleanVar(value=allergen in self.user_allergens)
-            allergen_vars[allergen] = var
-            
-            cb = tk.Checkbutton(
-                check_frame,
-                text=allergen.capitalize(),
-                variable=var,
-                font=("Arial", 12),
-                bg="white",
-                selectcolor="#4caf50",
-                cursor="hand2"
-            )
-            cb.grid(row=i//2, column=i%2, sticky='w', padx=20, pady=5)
-        
-        def save_settings():
-            selected_allergens = {allergen for allergen, var in allergen_vars.items() if var.get()}
-            self.save_user_allergens(selected_allergens)
-            
-            allergen_count = len(selected_allergens)
-            allergen_text = f"Allergens: {allergen_count} Set" if allergen_count > 0 else "No Allergens Set"
-            self.allergen_status_label.config(
-                text=allergen_text,
-                fg="#f44336" if allergen_count > 0 else "#666"
-            )
-            
-            messagebox.showinfo("Success", f"Saved {allergen_count} allergen preference(s)")
-            settings_window.destroy()
-        
-        tk.Button(
-            settings_window,
-            text="Save Settings",
-            command=save_settings,
+        submit_btn = tk.Button(
+            dialog,
+            text="Submit",
+            command=submit,
             bg="#4caf50",
             fg="white",
-            font=("Arial", 13, "bold"),
-            width=20,
+            font=("Arial", 12, "bold"),
+            width=15,
             height=2,
             cursor="hand2"
-        ).pack(pady=20)
+        )
+        submit_btn.pack(pady=10)
         
-        tk.Button(
-            settings_window,
-            text="Cancel",
-            command=settings_window.destroy,
-            bg="#757575",
-            fg="white",
-            font=("Arial", 11),
-            width=20,
-            cursor="hand2"
-        ).pack(pady=5)
+        entry.bind('<Return>', lambda e: submit())
     
     def view_history(self):
         """View scan history"""
@@ -1498,204 +1650,6 @@ class NutritionScannerApp:
             width=20,
             cursor="hand2"
         ).pack(pady=20)
-    
-    def show_welcome_message(self):
-        """Show welcome message"""
-        for widget in self.results_frame.winfo_children():
-            widget.destroy()
-        
-        welcome_text = "Welcome!\n\nScan a barcode to get started\n\nSet your allergens in Settings"
-        welcome_text += "\n\nMouse control is always enabled"
-        if SENSEHAT_AVAILABLE:
-            welcome_text += "\nToggle joystick control in title bar"
-        
-        welcome = tk.Label(
-            self.results_frame,
-            text=welcome_text,
-            font=("Arial", 13),
-            bg="white",
-            fg="#666"
-        )
-        welcome.pack(pady=50)
-    
-    def refresh_connection(self):
-        """Refresh connection status"""
-        self.is_online = self.check_connection()
-        status_color = "#4caf50" if self.is_online else "#ff9800"
-        status_text = "ONLINE" if self.is_online else "OFFLINE"
-        self.status_label.config(text=status_text, fg=status_color)
-        
-        if SENSEHAT_AVAILABLE:
-            if self.is_online:
-                self.set_led_color(GREEN, 'pulse')
-            else:
-                self.set_led_color(ORANGE, 'pulse')
-        
-        mode = "ONLINE" if self.is_online else "OFFLINE"
-        messagebox.showinfo("Connection Status", f"Mode: {mode}")
-    
-    def start_camera_scan(self):
-        """Start camera for regular scanning"""
-        self.scanning = True
-        self.adding_product = False  # Make sure we're not in add product mode
-        self.start_camera_btn.config(state=tk.DISABLED)
-        self.stop_camera_btn.config(state=tk.NORMAL)
-        
-        if SENSEHAT_AVAILABLE:
-            self.set_led_color(BLUE, 'pulse')
-        
-        threading.Thread(target=self.camera_scan_loop, daemon=True).start()
-    
-    def camera_scan_loop(self):
-        """Camera loop for regular scanning - auto-processes barcodes"""
-        self.camera = cv2.VideoCapture(0)
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
-        while self.scanning and not self.adding_product:
-            ret, frame = self.camera.read()
-            if not ret:
-                break
-            
-            barcodes = pyzbar.decode(frame)
-            
-            for barcode in barcodes:
-                barcode_data = barcode.data.decode('utf-8')
-                (x, y, w, h) = barcode.rect
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
-                cv2.putText(frame, barcode_data, (x, y - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                
-                self.scanning = False
-                self.root.after(0, self.process_barcode, barcode_data)
-                break
-            
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_pil = Image.fromarray(frame_rgb)
-            frame_pil = frame_pil.resize((480, 360))
-            frame_tk = ImageTk.PhotoImage(frame_pil)
-            
-            self.camera_label.config(image=frame_tk, text="")
-            self.camera_label.image = frame_tk
-        
-        if self.camera:
-            self.camera.release()
-            self.camera = None
-    
-    def stop_camera_scan(self):
-        """Stop camera"""
-        self.scanning = False
-        self.adding_product = False
-        self.capture_ready = False
-        self.start_camera_btn.config(state=tk.NORMAL)
-        self.stop_camera_btn.config(state=tk.DISABLED)
-        self.camera_label.config(image='', text="Camera Stopped", bg="black", fg="white")
-        self.capture_status_label.config(text="")
-        
-        if SENSEHAT_AVAILABLE and self.joystick_enabled:
-            self.show_arrow_pattern(ARROW_UP)
-    
-    def upload_image(self):
-        """Upload image and scan for barcode"""
-        print("INFO: Opening file dialog...")
-        file_path = filedialog.askopenfilename(
-            title="Select Barcode Image",
-            filetypes=[
-                ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
-                ("All files", "*.*")
-            ]
-        )
-        
-        if not file_path:
-            print("INFO: No file selected")
-            return
-        
-        print(f"INFO: Selected file: {file_path}")
-        
-        try:
-            image = cv2.imread(file_path)
-            
-            if image is None:
-                print("ERROR: Could not read image file")
-                messagebox.showerror("Error", "Could not read image file.\nPlease select a valid image.")
-                return
-            
-            print(f"SUCCESS: Image loaded: {image.shape}")
-            
-            display_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            display_pil = Image.fromarray(display_image)
-            display_pil = display_pil.resize((480, 360), Image.Resampling.LANCZOS)
-            display_tk = ImageTk.PhotoImage(display_pil)
-            
-            self.camera_label.config(image=display_tk, text="")
-            self.camera_label.image = display_tk
-            self.root.update()
-            
-            print("INFO: Decoding barcodes...")
-            
-            barcodes = pyzbar.decode(image)
-            
-            if barcodes:
-                barcode_data = barcodes[0].data.decode('utf-8')
-                print(f"SUCCESS: Barcode found: {barcode_data}")
-                self.process_barcode(barcode_data)
-            else:
-                print("ERROR: No barcode detected in image")
-                messagebox.showerror(
-                    "No Barcode Found", 
-                    "No barcode detected in the image.\n\n" +
-                    "Tips:\n" +
-                    "- Ensure the barcode is clear and in focus\n" +
-                    "- Try better lighting conditions\n" +
-                    "- Use a higher resolution image\n" +
-                    "- Make sure the entire barcode is visible"
-                )
-        
-        except Exception as e:
-            print(f"ERROR: Error processing image: {e}")
-            messagebox.showerror("Error", f"Failed to process image:\n\n{str(e)}")
-    
-    def manual_entry(self):
-        """Manual barcode entry"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Manual Barcode Entry")
-        dialog.geometry("400x180")
-        dialog.configure(bg="white")
-        dialog.grab_set()
-        
-        tk.Label(
-            dialog,
-            text="Enter Barcode:",
-            font=("Arial", 12),
-            bg="white"
-        ).pack(pady=10)
-        
-        entry = tk.Entry(dialog, font=("Arial", 14), width=25)
-        entry.pack(pady=10)
-        entry.focus()
-        
-        def submit():
-            barcode = entry.get().strip()
-            if barcode:
-                dialog.destroy()
-                self.process_barcode(barcode)
-            else:
-                messagebox.showerror("Error", "Please enter a barcode")
-        
-        submit_btn = tk.Button(
-            dialog,
-            text="Submit",
-            command=submit,
-            bg="#4caf50",
-            fg="white",
-            font=("Arial", 12, "bold"),
-            width=15,
-            height=2,
-            cursor="hand2"
-        )
-        submit_btn.pack(pady=10)
-        
-        entry.bind('<Return>', lambda e: submit())
     
     def process_barcode(self, barcode):
         """Process barcode - FIXED: Removes leading 0 for UPC-A codes"""
