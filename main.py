@@ -130,6 +130,7 @@ class NutritionScannerApp:
         self.captured_barcode = None
         self.capture_ready = False
         self.detected_barcode = None
+        self.latest_frame = None
         
         # Joystick variables
         self.joystick_thread = None
@@ -912,7 +913,7 @@ class NutritionScannerApp:
             if capture_mode == "manual":
                 # Show the capture button for manual mode
                 self.capture_btn.pack(pady=10)
-                self.capture_btn.config(state=tk.DISABLED, bg="#757575")
+                self.capture_btn.config(state=tk.NORMAL, bg="#757575")
                 
                 messagebox.showinfo(
                     "Manual Capture Mode",
@@ -984,6 +985,7 @@ class NutritionScannerApp:
             
             # Keep a copy of the original frame for saving
             original_frame = frame.copy()
+            self.latest_frame = original_frame
             
             barcodes = pyzbar.decode(frame)
             
@@ -1040,7 +1042,7 @@ class NutritionScannerApp:
                 if no_barcode_count % 30 == 0:
                     self.root.after(0, self._set_capture_status_safe, "No barcode found - adjust camera position", "#ff9800")
                 if not auto_capture:
-                    self.root.after(0, self._enable_capture_button, False)
+                    self.root.after(0, lambda: self.capture_btn.config(state=tk.NORMAL, bg="#757575"))
             
             self.root.after(0, self._update_camera_label_from_array, frame.copy())
         
@@ -1052,32 +1054,47 @@ class NutritionScannerApp:
     
     def capture_product_image(self, event=None):
         """Capture and save product image when button is clicked"""
+        # Determine which frame and barcode to use
+        frame_to_save = None
+        barcode = None
         if self.capture_ready and self.detected_barcode and self.captured_image is not None:
-            # Save image to /home/pi/Pictures
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            default_base = f"{self.detected_barcode}_{timestamp}"
-            user_base = simpledialog.askstring("Save Image", "Enter file name (without extension):", initialvalue=default_base)
-            base = user_base.strip() if user_base else default_base
-            safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in base).strip().replace(' ', '_')
-            image_filename = f"{safe_base}.jpg"
+            frame_to_save = self.captured_image
+            barcode = self.detected_barcode
+        elif self.latest_frame is not None:
+            frame_to_save = self.latest_frame
+        else:
+            messagebox.showerror("Capture Error", "No camera frame available yet. Please try again.")
+            return
+
+        # Save image to /home/pi/Pictures
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_base = f"{barcode}_{timestamp}" if barcode else f"manual_{timestamp}"
+        user_base = simpledialog.askstring("Save Image", "Enter file name (without extension):", initialvalue=default_base)
+        base = user_base.strip() if user_base else default_base
+        safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in base).strip().replace(' ', '_')
+        image_filename = f"{safe_base}.jpg"
+        image_path = os.path.join(PICTURES_DIR, image_filename)
+        counter = 1
+        while os.path.exists(image_path):
+            image_filename = f"{safe_base}_{counter}.jpg"
             image_path = os.path.join(PICTURES_DIR, image_filename)
-            counter = 1
-            while os.path.exists(image_path):
-                image_filename = f"{safe_base}_{counter}.jpg"
-                image_path = os.path.join(PICTURES_DIR, image_filename)
-                counter += 1
-            
-            cv2.imwrite(image_path, self.captured_image)
-            print(f"INFO: Saved image to {image_path}")
-            
-            # Stop scanning and hide capture button
-            self.scanning = False
-            self.adding_product = False
-            self.capture_status_label.config(text="Image captured successfully!", fg="#4caf50")
-            self.capture_btn.pack_forget()
-            
-            # Open the add product form
-            self.root.after(0, self.open_add_product_form, self.detected_barcode, image_path)
+            counter += 1
+
+        cv2.imwrite(image_path, frame_to_save)
+        print(f"INFO: Saved image to {image_path}")
+
+        # Stop scanning and hide capture button
+        self.scanning = False
+        self.adding_product = False
+        self.capture_status_label.config(text="Image captured successfully!", fg="#4caf50")
+        self.capture_btn.pack_forget()
+
+        # If we have a barcode, continue to add product; otherwise inform user to use Upload Image later
+        if barcode:
+            self.root.after(0, self.open_add_product_form, barcode, image_path)
+        else:
+            messagebox.showinfo("Captured", f"Image saved to:\n{image_path}\n\nNo barcode detected. Use 'Upload Image' to scan later.")
+            self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
     
     def open_add_product_form(self, barcode, image_path):
         """Open form to add product details"""
