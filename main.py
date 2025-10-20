@@ -759,12 +759,25 @@ class NutritionScannerApp:
         threading.Thread(target=self.add_product_camera_loop, daemon=True).start()
     
     def add_product_camera_loop(self):
-        """Camera loop for adding products - captures barcode image"""
+        """Camera loop for adding products - MANUAL capture with Enter key"""
         self.camera = cv2.VideoCapture(0)
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
-        while self.scanning and self.adding_product:
+        captured = False
+        detected_barcode = None
+        capture_frame = None
+        
+        # Bind Enter key for manual capture
+        def capture_image(event=None):
+            nonlocal captured, detected_barcode, capture_frame
+            if detected_barcode and not captured:
+                captured = True
+                print(f"INFO: Manual capture triggered for barcode: {detected_barcode}")
+        
+        self.root.bind('<Return>', capture_image)
+        
+        while self.scanning and self.adding_product and not captured:
             ret, frame = self.camera.read()
             if not ret:
                 break
