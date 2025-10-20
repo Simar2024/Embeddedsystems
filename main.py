@@ -1009,7 +1009,7 @@ class NutritionScannerApp:
             height=2,
             cursor="hand2"
         ).pack(side=tk.LEFT, padx=10)
-    def open_settings(self):
+        def open_settings(self):
             """Open allergen settings dialog"""
             settings_window = tk.Toplevel(self.root)
             settings_window.title("Settings")
