@@ -810,112 +810,9 @@ class NutritionScannerApp:
         self.open_add_product_form(barcode, None)
 
     def start_add_product_with_image(self):
-        """Add product by selecting an image; decode barcode or prompt for it"""
-        if not self.is_online:
-            messagebox.showerror(
-                "Offline Mode",
-                "You must be ONLINE to add new products to the database.\n\nPlease connect to the internet and try again."
-            )
-            return
-        file_path = filedialog.askopenfilename(
-            title="Select Product Image",
-            filetypes=[
-                ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
-                ("All files", "*.*")
-            ]
-        )
-        if not file_path:
-            return
-        image = cv2.imread(file_path)
-        if image is None:
-            messagebox.showerror("Error", "Could not read image file. Please select a valid image.")
-            return
-        barcodes = pyzbar.decode(image)
-        if barcodes:
-            barcode = barcodes[0].data.decode('utf-8')
-            if len(barcode) == 13 and barcode.startswith('0'):
-                barcode = barcode[1:]
-            self.open_add_product_form(barcode, file_path)
-        else:
-            manual_barcode = simpledialog.askstring(
-                "Enter Barcode",
-                "No barcode detected in the image.\n\nEnter the barcode manually:"
-            )
-            if manual_barcode:
-                if len(manual_barcode) == 13 and manual_barcode.startswith('0'):
-                    manual_barcode = manual_barcode[1:]
-                self.open_add_product_form(manual_barcode, file_path)
-            else:
-                messagebox.showinfo("Cancelled", "Add Product (Image) cancelled.")
-        
-        tk.Label(
-            settings_window,
-            text="Select allergens you want to be warned about:",
-            font=("Arial", 11),
-            bg="white",
-            fg="#666"
-        ).pack(pady=5)
-        
-        allergen_list = [
-            "dairy", "nuts", "peanuts", "gluten", "soy",
-            "eggs", "fish", "shellfish", "coconut", "sesame"
-        ]
-        
-        allergen_vars = {}
-        check_frame = tk.Frame(settings_window, bg="white")
-        check_frame.pack(pady=20)
-        
-        for i, allergen in enumerate(allergen_list):
-            var = tk.BooleanVar(value=allergen in self.user_allergens)
-            allergen_vars[allergen] = var
-            
-            cb = tk.Checkbutton(
-                check_frame,
-                text=allergen.capitalize(),
-                variable=var,
-                font=("Arial", 12),
-                bg="white",
-                selectcolor="#4caf50",
-                cursor="hand2"
-            )
-            cb.grid(row=i//2, column=i%2, sticky='w', padx=20, pady=5)
-        
-        def save_settings():
-            selected_allergens = {allergen for allergen, var in allergen_vars.items() if var.get()}
-            self.save_user_allergens(selected_allergens)
-            
-            allergen_count = len(selected_allergens)
-            allergen_text = f"Allergens: {allergen_count} Set" if allergen_count > 0 else "No Allergens Set"
-            self.allergen_status_label.config(
-                text=allergen_text,
-                fg="#f44336" if allergen_count > 0 else "#666"
-            )
-            
-            messagebox.showinfo("Success", f"Saved {allergen_count} allergen preference(s)")
-            settings_window.destroy()
-        
-        tk.Button(
-            settings_window,
-            text="Save Settings",
-            command=save_settings,
-            bg="#4caf50",
-            fg="white",
-            font=("Arial", 13, "bold"),
-            width=20,
-            height=2,
-            cursor="hand2"
-        ).pack(pady=20)
-        
-        tk.Button(
-            settings_window,
-            text="Cancel",
-            command=settings_window.destroy,
-            bg="#757575",
-            fg="white",
-            font=("Arial", 11),
-            width=20,
-            cursor="hand2"
-        ).pack(pady=5)
+        """Add product using camera (manual/auto capture), then fill details"""
+        # Reuse the existing camera-based Add Product flow
+        self.start_add_product()
     
     def start_add_product(self):
         """Start the process of adding a new product"""
@@ -981,7 +878,8 @@ class NutritionScannerApp:
             if capture_mode == "manual":
                 # Show the capture button for manual mode
                 self.capture_btn.pack(pady=10)
-                self.capture_btn.config(state=tk.NORMAL, bg="#757575")
+                # Disabled until a valid barcode is detected
+                self.capture_btn.config(state=tk.DISABLED, bg="#757575")
                 
                 messagebox.showinfo(
                     "Manual Capture Mode",
@@ -1110,7 +1008,8 @@ class NutritionScannerApp:
                 if no_barcode_count % 30 == 0:
                     self.root.after(0, self._set_capture_status_safe, "No barcode found - adjust camera position", "#ff9800")
                 if not auto_capture:
-                    self.root.after(0, lambda: self.capture_btn.config(state=tk.NORMAL, bg="#757575"))
+                    # Keep capture disabled until a barcode is detected
+                    self.root.after(0, self._enable_capture_button, False)
             
             self.root.after(0, self._update_camera_label_from_array, frame.copy())
         
@@ -1122,28 +1021,27 @@ class NutritionScannerApp:
     
     def capture_product_image(self, event=None):
         """Capture and save product image when button is clicked"""
-        # Determine which frame and barcode to use; prefer a fresh grab from the camera
+        # Only allow capture when a valid barcode has been detected
+        if not (self.capture_ready and self.detected_barcode):
+            messagebox.showinfo("Unable to Read Barcode", "No valid barcode detected. Please adjust and try again." )
+            return
+
+        # Prefer a fresh grab from the camera for the saved frame
         frame_to_save = None
-        barcode = None
-        fresh_frame = None
+        barcode = self.detected_barcode
         if getattr(self, 'camera', None) is not None:
             ret, frame = self.camera.read()
             if ret:
-                fresh_frame = frame.copy()
-        if fresh_frame is not None:
-            frame_to_save = fresh_frame
-        elif self.capture_ready and self.detected_barcode and self.captured_image is not None:
+                frame_to_save = frame.copy()
+        if frame_to_save is None and self.captured_image is not None:
             frame_to_save = self.captured_image
-            barcode = self.detected_barcode
-        elif self.latest_frame is not None:
-            frame_to_save = self.latest_frame
-        else:
+        if frame_to_save is None:
             messagebox.showerror("Capture Error", "No camera frame available yet. Please try again.")
             return
 
-        # Create default filename and save immediately
+        # Create default filename and save immediately (capture first, then rename)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_base = f"{barcode}_{timestamp}" if barcode else f"manual_{timestamp}"
+        default_base = f"{barcode}_{timestamp}"
         safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in default_base).strip().replace(' ', '_')
         image_filename = f"{safe_base}.jpg"
         image_path = os.path.join(PICTURES_DIR, image_filename)
@@ -1181,12 +1079,8 @@ class NutritionScannerApp:
         self.capture_status_label.config(text="Image captured successfully!", fg="#4caf50")
         self.capture_btn.pack_forget()
 
-        # If we have a barcode, continue to add product; otherwise inform user to use Upload Image later
-        if barcode:
-            self.root.after(0, self.open_add_product_form, barcode, image_path)
-        else:
-            messagebox.showinfo("Captured", f"Image saved to:\n{image_path}\n\nNo barcode detected. Use 'Upload Image' to scan later.")
-            self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
+        # Open the add product form with the detected barcode
+        self.root.after(0, self.open_add_product_form, barcode, image_path)
     
     def open_add_product_form(self, barcode, image_path):
         """Open form to add product details"""
