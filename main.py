@@ -9,7 +9,7 @@ Control: Use MOUSE or JOYSTICK (UP/DOWN to navigate, MIDDLE to select)
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 import cv2
 from pyzbar import pyzbar
 import requests
@@ -428,19 +428,8 @@ class NutritionScannerApp:
             if i == self.current_menu_index:
                 btn.configure(relief=tk.RAISED, borderwidth=4, bg="#2196f3")
             else:
-                # Reset to original colors
-                if i == 0:
-                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#4caf50")
-                elif i == 1:
-                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#2196f3")
-                elif i == 2:
-                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#ff9800")
-                elif i == 3:
-                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#9c27b0")
-                elif i == 4:
-                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#00bcd4")
-                elif i == 5:
-                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#ff5722")
+                original_bg = self.menu_original_bg[i] if hasattr(self, 'menu_original_bg') and i < len(self.menu_original_bg) else btn.cget("bg")
+                btn.configure(relief=tk.FLAT, borderwidth=1, bg=original_bg)
     
     def quit_app(self):
         """Quit application and cleanup"""
@@ -616,34 +605,6 @@ class NutritionScannerApp:
         btn_frame = tk.Frame(left_frame, bg="white")
         btn_frame.pack(pady=15)
         
-        self.start_camera_btn = tk.Button(
-            btn_frame,
-            text="Start\nCamera",
-            command=self.start_camera_scan,
-            bg="#4caf50",
-            fg="white",
-            font=("Arial", 13, "bold"),
-            width=12,
-            height=3,
-            cursor="hand2"
-        )
-        self.start_camera_btn.grid(row=0, column=0, padx=5)
-        self.menu_items.append(self.start_camera_btn)
-        
-        self.stop_camera_btn = tk.Button(
-            btn_frame,
-            text="Stop\nCamera",
-            command=self.stop_camera_scan,
-            bg="#f44336",
-            fg="white",
-            font=("Arial", 13, "bold"),
-            width=12,
-            height=3,
-            state=tk.DISABLED,
-            cursor="hand2"
-        )
-        self.stop_camera_btn.grid(row=0, column=1, padx=5)
-        
         upload_btn = tk.Button(
             btn_frame,
             text="Upload\nImage",
@@ -655,7 +616,7 @@ class NutritionScannerApp:
             height=3,
             cursor="hand2"
         )
-        upload_btn.grid(row=1, column=0, padx=5, pady=5)
+        upload_btn.grid(row=0, column=0, padx=5)
         self.menu_items.append(upload_btn)
         
         manual_btn = tk.Button(
@@ -669,7 +630,7 @@ class NutritionScannerApp:
             height=3,
             cursor="hand2"
         )
-        manual_btn.grid(row=1, column=1, padx=5, pady=5)
+        manual_btn.grid(row=0, column=1, padx=5)
         self.menu_items.append(manual_btn)
         
         history_btn = tk.Button(
@@ -683,7 +644,7 @@ class NutritionScannerApp:
             height=3,
             cursor="hand2"
         )
-        history_btn.grid(row=2, column=0, padx=5, pady=5)
+        history_btn.grid(row=1, column=0, padx=5, pady=5)
         self.menu_items.append(history_btn)
         
         stats_btn = tk.Button(
@@ -697,7 +658,7 @@ class NutritionScannerApp:
             height=3,
             cursor="hand2"
         )
-        stats_btn.grid(row=2, column=1, padx=5, pady=5)
+        stats_btn.grid(row=1, column=1, padx=5, pady=5)
         self.menu_items.append(stats_btn)
         
         # Add Product button
@@ -712,7 +673,7 @@ class NutritionScannerApp:
             height=3,
             cursor="hand2"
         )
-        add_product_btn.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
+        add_product_btn.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
         self.menu_items.append(add_product_btn)
         
         # Right panel - Results
@@ -747,6 +708,7 @@ class NutritionScannerApp:
         
         # Highlight first menu item
         self.current_menu_index = 0
+        self.menu_original_bg = [btn.cget("bg") for btn in self.menu_items]
         if self.menu_items:
             self.highlight_menu_item()
     
@@ -869,70 +831,6 @@ class NutritionScannerApp:
             cursor="hand2"
         ).pack(pady=5)
     
-    def start_camera_scan(self):
-        """Start camera for regular scanning"""
-        self.scanning = True
-        self.adding_product = False  # Make sure we're not in add product mode
-        self.start_camera_btn.config(state=tk.DISABLED)
-        self.stop_camera_btn.config(state=tk.NORMAL)
-        
-        if SENSEHAT_AVAILABLE:
-            self.set_led_color(BLUE, 'pulse')
-        
-        threading.Thread(target=self.camera_scan_loop, daemon=True).start()
-    
-    def camera_scan_loop(self):
-        """Camera loop for regular scanning - auto-processes barcodes"""
-        self.camera = cv2.VideoCapture(0)
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
-        while self.scanning and not self.adding_product:
-            ret, frame = self.camera.read()
-            if not ret:
-                break
-            
-            barcodes = pyzbar.decode(frame)
-            
-            for barcode in barcodes:
-                barcode_data = barcode.data.decode('utf-8')
-                (x, y, w, h) = barcode.rect
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
-                cv2.putText(frame, barcode_data, (x, y - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                
-                self.scanning = False
-                self.root.after(0, self.process_barcode, barcode_data)
-                break
-            
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_pil = Image.fromarray(frame_rgb)
-            frame_pil = frame_pil.resize((480, 360))
-            frame_tk = ImageTk.PhotoImage(frame_pil)
-            
-            self.camera_label.config(image=frame_tk, text="")
-            self.camera_label.image = frame_tk
-        
-        if self.camera:
-            self.camera.release()
-            self.camera = None
-    
-    def stop_camera_scan(self):
-        """Stop camera"""
-        self.scanning = False
-        self.adding_product = False
-        self.capture_ready = False
-        self.start_camera_btn.config(state=tk.NORMAL)
-        self.stop_camera_btn.config(state=tk.DISABLED)
-        self.camera_label.config(image='', text="Camera Stopped", bg="black", fg="white")
-        self.capture_status_label.config(text="")
-        
-        # Hide capture button if it's visible
-        self.capture_btn.pack_forget()
-        
-        if SENSEHAT_AVAILABLE and self.joystick_enabled:
-            self.show_arrow_pattern(ARROW_UP)
-    
     def start_add_product(self):
         """Start the process of adding a new product"""
         if not self.is_online:
@@ -989,8 +887,6 @@ class NutritionScannerApp:
             self.scanning = True  # Set this BEFORE starting thread
             
             # Start camera to capture barcode
-            self.start_camera_btn.config(state=tk.DISABLED)
-            self.stop_camera_btn.config(state=tk.NORMAL)
             
             if capture_mode == "manual":
                 # Show the capture button for manual mode
@@ -1114,20 +1010,27 @@ class NutritionScannerApp:
         if self.camera:
             self.camera.release()
             self.camera = None
-            self.start_camera_btn.config(state=tk.NORMAL)
-            self.stop_camera_btn.config(state=tk.DISABLED)
+            self.capture_status_label.config(text="")
         
         # Hide the capture button if it was shown
         self.capture_btn.pack_forget()
-        self.capture_status_label.config(text="")
     
     def capture_product_image(self, event=None):
         """Capture and save product image when button is clicked"""
         if self.capture_ready and self.detected_barcode and self.captured_image is not None:
             # Save image to /home/pi/Pictures
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            image_filename = f"{self.detected_barcode}_{timestamp}.jpg"
+            default_base = f"{self.detected_barcode}_{timestamp}"
+            user_base = simpledialog.askstring("Save Image", "Enter file name (without extension):", initialvalue=default_base)
+            base = user_base.strip() if user_base else default_base
+            safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in base).strip().replace(' ', '_')
+            image_filename = f"{safe_base}.jpg"
             image_path = os.path.join(PICTURES_DIR, image_filename)
+            counter = 1
+            while os.path.exists(image_path):
+                image_filename = f"{safe_base}_{counter}.jpg"
+                image_path = os.path.join(PICTURES_DIR, image_filename)
+                counter += 1
             
             cv2.imwrite(image_path, self.captured_image)
             print(f"INFO: Saved image to {image_path}")
