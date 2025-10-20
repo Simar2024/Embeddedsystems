@@ -20,6 +20,7 @@ from datetime import datetime
 from PIL import Image, ImageTk
 import os
 import sys
+import time
 
 # Try to import SenseHat (only works on Raspberry Pi)
 try:
@@ -40,7 +41,56 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 ORANGE = (255, 165, 0)
 BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)
+PURPLE = (128, 0, 128)
+CYAN = (0, 255, 255)
+WHITE = (255, 255, 255)
 OFF = (0, 0, 0)
+
+# Arrow patterns for SenseHat
+ARROW_UP = [
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    OFF, OFF, WHITE, WHITE, WHITE, WHITE, OFF, OFF,
+    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
+    WHITE, WHITE, OFF, WHITE, WHITE, OFF, WHITE, WHITE,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
+]
+
+ARROW_DOWN = [
+    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
+    WHITE, WHITE, OFF, WHITE, WHITE, OFF, WHITE, WHITE,
+    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
+    OFF, OFF, WHITE, WHITE, WHITE, WHITE, OFF, OFF,
+    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF
+]
+
+ARROW_LEFT = [
+    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
+    OFF, OFF, WHITE, OFF, OFF, OFF, OFF, OFF,
+    OFF, WHITE, WHITE, OFF, OFF, OFF, OFF, OFF,
+    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
+    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
+    OFF, WHITE, WHITE, OFF, OFF, OFF, OFF, OFF,
+    OFF, OFF, WHITE, OFF, OFF, OFF, OFF, OFF,
+    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
+]
+
+ARROW_RIGHT = [
+    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
+    OFF, OFF, OFF, OFF, OFF, WHITE, OFF, OFF,
+    OFF, OFF, OFF, OFF, OFF, WHITE, WHITE, OFF,
+    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
+    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
+    OFF, OFF, OFF, OFF, OFF, WHITE, WHITE, OFF,
+    OFF, OFF, OFF, OFF, OFF, WHITE, OFF, OFF,
+    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
+]
 
 class NutritionScannerApp:
     def __init__(self, root):
@@ -65,6 +115,7 @@ class NutritionScannerApp:
         self.camera = None
         self.user_allergens = self.load_user_allergens()
         self.led_thread = None
+        self.led_animation_running = False
         
         # Joystick variables
         self.joystick_thread = None
@@ -72,12 +123,18 @@ class NutritionScannerApp:
         self.current_menu_index = 0
         self.menu_items = []
         
+        # Statistics
+        self.total_scans = self.get_total_scans()
+        self.healthy_scans = self.get_healthy_scans()
+        self.allergen_warnings = self.get_allergen_warnings()
+        
         # Create GUI
         self.create_gui()
         
         # Start joystick listener
         if SENSEHAT_AVAILABLE:
             self.start_joystick_listener()
+            self.show_arrow_pattern(ARROW_UP)  # Show default arrow
         
         print("✅ Application started successfully")
         if SENSEHAT_AVAILABLE:
@@ -115,7 +172,9 @@ class NutritionScannerApp:
             CREATE TABLE IF NOT EXISTS scan_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 barcode TEXT NOT NULL,
-                scanned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                scanned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_healthy INTEGER,
+                has_allergen INTEGER
             )
         ''')
         
@@ -159,6 +218,33 @@ class NutritionScannerApp:
         conn.close()
         self.user_allergens = allergens
         
+    def get_total_scans(self):
+        """Get total number of scans"""
+        conn = sqlite3.connect(SQLITE_DB)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM scan_history")
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    
+    def get_healthy_scans(self):
+        """Get number of healthy product scans"""
+        conn = sqlite3.connect(SQLITE_DB)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM scan_history WHERE is_healthy = 1")
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    
+    def get_allergen_warnings(self):
+        """Get number of allergen warnings"""
+        conn = sqlite3.connect(SQLITE_DB)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM scan_history WHERE has_allergen = 1")
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+        
     def check_connection(self):
         """Check if we have internet connection to API"""
         try:
@@ -167,28 +253,80 @@ class NutritionScannerApp:
         except:
             return False
     
+    def show_arrow_pattern(self, pattern):
+        """Show arrow pattern on SenseHat"""
+        if not SENSEHAT_AVAILABLE:
+            return
+        sense.set_pixels(pattern)
+    
     def set_led_color(self, color, pattern='solid'):
         """Set SenseHat LED color"""
         if not SENSEHAT_AVAILABLE:
             return
+        
+        self.led_animation_running = False
+        if self.led_thread and self.led_thread.is_alive():
+            time.sleep(0.1)  # Let previous animation stop
             
         if pattern == 'solid':
             sense.clear(color)
         elif pattern == 'flash':
-            # Flash pattern in separate thread
-            if self.led_thread and self.led_thread.is_alive():
-                return
+            self.led_animation_running = True
             self.led_thread = threading.Thread(target=self._flash_led, args=(color,), daemon=True)
+            self.led_thread.start()
+        elif pattern == 'pulse':
+            self.led_animation_running = True
+            self.led_thread = threading.Thread(target=self._pulse_led, args=(color,), daemon=True)
+            self.led_thread.start()
+        elif pattern == 'rainbow':
+            self.led_animation_running = True
+            self.led_thread = threading.Thread(target=self._rainbow_animation, daemon=True)
             self.led_thread.start()
     
     def _flash_led(self, color):
         """Flash LED pattern"""
         for _ in range(6):
+            if not self.led_animation_running:
+                break
             sense.clear(color)
-            threading.Event().wait(0.3)
+            time.sleep(0.3)
             sense.clear()
-            threading.Event().wait(0.3)
-        sense.clear(color)
+            time.sleep(0.3)
+        if self.led_animation_running:
+            sense.clear(color)
+    
+    def _pulse_led(self, color):
+        """Pulse LED pattern"""
+        r, g, b = color
+        for _ in range(3):
+            if not self.led_animation_running:
+                break
+            for brightness in range(0, 100, 5):
+                if not self.led_animation_running:
+                    break
+                dim_color = (r * brightness // 100, g * brightness // 100, b * brightness // 100)
+                sense.clear(dim_color)
+                time.sleep(0.02)
+            for brightness in range(100, 0, -5):
+                if not self.led_animation_running:
+                    break
+                dim_color = (r * brightness // 100, g * brightness // 100, b * brightness // 100)
+                sense.clear(dim_color)
+                time.sleep(0.02)
+        if self.led_animation_running:
+            sense.clear(color)
+    
+    def _rainbow_animation(self):
+        """Rainbow animation for SenseHat"""
+        colors = [RED, ORANGE, YELLOW, GREEN, CYAN, BLUE, PURPLE]
+        for _ in range(10):
+            if not self.led_animation_running:
+                break
+            for color in colors:
+                if not self.led_animation_running:
+                    break
+                sense.clear(color)
+                time.sleep(0.1)
     
     def start_joystick_listener(self):
         """Start listening to joystick events"""
@@ -205,52 +343,74 @@ class NutritionScannerApp:
             for event in sense.stick.get_events():
                 if event.action == "pressed":
                     if event.direction == "up":
-                        self.joystick_up()
+                        self.root.after(0, self.joystick_up)
                     elif event.direction == "down":
-                        self.joystick_down()
-                    elif event.direction == "middle":
-                        self.joystick_select()
+                        self.root.after(0, self.joystick_down)
                     elif event.direction == "left":
-                        self.refresh_connection()
+                        self.root.after(0, self.joystick_left)
                     elif event.direction == "right":
-                        self.open_settings()
-            threading.Event().wait(0.1)
+                        self.root.after(0, self.joystick_right)
+                    elif event.direction == "middle":
+                        self.root.after(0, self.joystick_select)
+            time.sleep(0.05)
     
     def joystick_up(self):
         """Handle joystick UP - navigate menu"""
         if len(self.menu_items) > 0:
             self.current_menu_index = (self.current_menu_index - 1) % len(self.menu_items)
             self.highlight_menu_item()
-            self.set_led_color(BLUE, 'solid')
+            self.show_arrow_pattern(ARROW_UP)
     
     def joystick_down(self):
         """Handle joystick DOWN - navigate menu"""
         if len(self.menu_items) > 0:
             self.current_menu_index = (self.current_menu_index + 1) % len(self.menu_items)
             self.highlight_menu_item()
-            self.set_led_color(BLUE, 'solid')
+            self.show_arrow_pattern(ARROW_DOWN)
+    
+    def joystick_left(self):
+        """Handle joystick LEFT"""
+        self.show_arrow_pattern(ARROW_LEFT)
+        self.refresh_connection()
+    
+    def joystick_right(self):
+        """Handle joystick RIGHT"""
+        self.show_arrow_pattern(ARROW_RIGHT)
+        self.open_settings()
     
     def joystick_select(self):
         """Handle joystick MIDDLE - select current menu item"""
         if len(self.menu_items) > 0:
             selected_button = self.menu_items[self.current_menu_index]
-            # Invoke button in main thread
-            self.root.after(0, selected_button.invoke)
-            self.set_led_color(GREEN, 'solid')
+            selected_button.invoke()
+            self.set_led_color(GREEN, 'pulse')
     
     def highlight_menu_item(self):
         """Highlight current menu item"""
         for i, btn in enumerate(self.menu_items):
             if i == self.current_menu_index:
-                btn.configure(relief=tk.RAISED, borderwidth=4)
+                btn.configure(relief=tk.RAISED, borderwidth=4, bg="#2196f3")
             else:
-                btn.configure(relief=tk.FLAT, borderwidth=1)
+                # Reset to original colors
+                if i == 0:  # Start Camera
+                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#4caf50")
+                elif i == 1:  # Upload Image
+                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#2196f3")
+                elif i == 2:  # Manual Entry
+                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#ff9800")
+                elif i == 3:  # View History
+                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#9c27b0")
+                elif i == 4:  # Statistics
+                    btn.configure(relief=tk.FLAT, borderwidth=1, bg="#00bcd4")
     
     def quit_app(self):
         """Quit application and cleanup"""
         self.joystick_running = False
+        self.led_animation_running = False
         if SENSEHAT_AVAILABLE:
             sense.clear()
+        if self.camera:
+            self.camera.release()
         self.root.quit()
     
     def create_gui(self):
@@ -317,6 +477,16 @@ class NutritionScannerApp:
             fg="#f44336" if allergen_count > 0 else "#666"
         )
         self.allergen_status_label.pack(side=tk.LEFT, padx=20, pady=10)
+        
+        # Add scan counter to status bar
+        self.scan_counter_label = tk.Label(
+            status_frame,
+            text=f"📊 Total Scans: {self.total_scans}",
+            font=("Arial", 11),
+            bg="#e8e8e8",
+            fg="#2196f3"
+        )
+        self.scan_counter_label.pack(side=tk.LEFT, padx=20, pady=10)
         
         if SENSEHAT_AVAILABLE:
             led_status = tk.Label(
@@ -429,6 +599,32 @@ class NutritionScannerApp:
         manual_btn.grid(row=1, column=1, padx=5, pady=5)
         self.menu_items.append(manual_btn)
         
+        history_btn = tk.Button(
+            btn_frame,
+            text="📜 View\nHistory",
+            command=self.view_history,
+            bg="#9c27b0",
+            fg="white",
+            font=("Arial", 13, "bold"),
+            width=12,
+            height=3
+        )
+        history_btn.grid(row=2, column=0, padx=5, pady=5)
+        self.menu_items.append(history_btn)
+        
+        stats_btn = tk.Button(
+            btn_frame,
+            text="📊 View\nStatistics",
+            command=self.view_statistics,
+            bg="#00bcd4",
+            fg="white",
+            font=("Arial", 13, "bold"),
+            width=12,
+            height=3
+        )
+        stats_btn.grid(row=2, column=1, padx=5, pady=5)
+        self.menu_items.append(stats_btn)
+        
         # Right panel - Results
         right_frame = tk.Frame(main_frame, bg="white", relief=tk.RAISED, bd=2)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -459,7 +655,8 @@ class NutritionScannerApp:
         
         self.show_welcome_message()
         
-        # Highlight first menu item
+        # Highlight first menu item (Start Camera by default)
+        self.current_menu_index = 0
         if self.menu_items:
             self.highlight_menu_item()
         
@@ -467,8 +664,9 @@ class NutritionScannerApp:
         """Open allergen settings dialog"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("⚙️ Settings")
-        settings_window.geometry("500x600")
+        settings_window.geometry("500x650")
         settings_window.configure(bg="white")
+        settings_window.grab_set()
         
         tk.Label(
             settings_window,
@@ -543,6 +741,221 @@ class NutritionScannerApp:
             width=20
         ).pack(pady=5)
         
+    def view_history(self):
+        """View scan history"""
+        history_window = tk.Toplevel(self.root)
+        history_window.title("📜 Scan History")
+        history_window.geometry("700x600")
+        history_window.configure(bg="white")
+        
+        tk.Label(
+            history_window,
+            text="📜 Recent Scans",
+            font=("Arial", 16, "bold"),
+            bg="white"
+        ).pack(pady=20)
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(history_window, bg="white")
+        scrollbar = ttk.Scrollbar(history_window, orient="vertical", command=canvas.yview)
+        history_frame = tk.Frame(canvas, bg="white")
+        
+        history_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=history_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=20, pady=20)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Get history from database
+        conn = sqlite3.connect(SQLITE_DB)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT sh.barcode, p.name, sh.scanned_at, sh.is_healthy, sh.has_allergen
+            FROM scan_history sh
+            LEFT JOIN products p ON sh.barcode = p.barcode
+            ORDER BY sh.scanned_at DESC
+            LIMIT 50
+        ''')
+        history = cursor.fetchall()
+        conn.close()
+        
+        if not history:
+            tk.Label(
+                history_frame,
+                text="No scan history yet!",
+                font=("Arial", 12),
+                bg="white",
+                fg="#666"
+            ).pack(pady=50)
+        else:
+            for i, (barcode, name, scanned_at, is_healthy, has_allergen) in enumerate(history):
+                item_frame = tk.Frame(history_frame, bg="#f5f5f5", relief=tk.RAISED, bd=1)
+                item_frame.pack(fill=tk.X, padx=10, pady=5)
+                
+                # Health indicator
+                indicator = "✅" if is_healthy else "⚠️"
+                if has_allergen:
+                    indicator = "🚨"
+                
+                tk.Label(
+                    item_frame,
+                    text=f"{indicator} {name or 'Unknown Product'}",
+                    font=("Arial", 12, "bold"),
+                    bg="#f5f5f5",
+                    anchor="w"
+                ).pack(side=tk.LEFT, padx=10, pady=10)
+                
+                tk.Label(
+                    item_frame,
+                    text=scanned_at,
+                    font=("Arial", 9),
+                    bg="#f5f5f5",
+                    fg="#666"
+                ).pack(side=tk.RIGHT, padx=10, pady=10)
+        
+        tk.Button(
+            history_window,
+            text="Close",
+            command=history_window.destroy,
+            bg="#757575",
+            fg="white",
+            font=("Arial", 11),
+            width=20
+        ).pack(pady=20)
+    
+    def view_statistics(self):
+        """View scanning statistics"""
+        stats_window = tk.Toplevel(self.root)
+        stats_window.title("📊 Statistics")
+        stats_window.geometry("600x500")
+        stats_window.configure(bg="white")
+        
+        tk.Label(
+            stats_window,
+            text="📊 Your Scanning Statistics",
+            font=("Arial", 16, "bold"),
+            bg="white"
+        ).pack(pady=20)
+        
+        stats_frame = tk.Frame(stats_window, bg="white")
+        stats_frame.pack(pady=20, padx=40, fill=tk.BOTH, expand=True)
+        
+        # Total scans
+        total_frame = tk.Frame(stats_frame, bg="#e3f2fd", relief=tk.RAISED, bd=2)
+        total_frame.pack(fill=tk.X, pady=10)
+        
+        tk.Label(
+            total_frame,
+            text="🔍 Total Scans",
+            font=("Arial", 14, "bold"),
+            bg="#e3f2fd"
+        ).pack(pady=10)
+        
+        tk.Label(
+            total_frame,
+            text=str(self.total_scans),
+            font=("Arial", 32, "bold"),
+            bg="#e3f2fd",
+            fg="#2196f3"
+        ).pack(pady=5)
+        
+        # Healthy scans
+        healthy_frame = tk.Frame(stats_frame, bg="#e8f5e9", relief=tk.RAISED, bd=2)
+        healthy_frame.pack(fill=tk.X, pady=10)
+        
+        tk.Label(
+            healthy_frame,
+            text="✅ Healthy Products",
+            font=("Arial", 14, "bold"),
+            bg="#e8f5e9"
+        ).pack(pady=10)
+        
+        healthy_percentage = (self.healthy_scans / self.total_scans * 100) if self.total_scans > 0 else 0
+        
+        tk.Label(
+            healthy_frame,
+            text=f"{self.healthy_scans} ({healthy_percentage:.1f}%)",
+            font=("Arial", 28, "bold"),
+            bg="#e8f5e9",
+            fg="#4caf50"
+        ).pack(pady=5)
+        
+        # Allergen warnings
+        allergen_frame = tk.Frame(stats_frame, bg="#ffebee", relief=tk.RAISED, bd=2)
+        allergen_frame.pack(fill=tk.X, pady=10)
+        
+        tk.Label(
+            allergen_frame,
+            text="⚠️ Allergen Warnings",
+            font=("Arial", 14, "bold"),
+            bg="#ffebee"
+        ).pack(pady=10)
+        
+        tk.Label(
+            allergen_frame,
+            text=str(self.allergen_warnings),
+            font=("Arial", 32, "bold"),
+            bg="#ffebee",
+            fg="#f44336"
+        ).pack(pady=5)
+        
+        # LED test button
+        if SENSEHAT_AVAILABLE:
+            tk.Label(
+                stats_window,
+                text="Test LED Animations:",
+                font=("Arial", 12),
+                bg="white"
+            ).pack(pady=(20, 10))
+            
+            led_frame = tk.Frame(stats_window, bg="white")
+            led_frame.pack()
+            
+            tk.Button(
+                led_frame,
+                text="🌈 Rainbow",
+                command=lambda: self.set_led_color(None, 'rainbow'),
+                bg="#9c27b0",
+                fg="white",
+                font=("Arial", 10),
+                width=10
+            ).pack(side=tk.LEFT, padx=5)
+            
+            tk.Button(
+                led_frame,
+                text="💚 Pulse",
+                command=lambda: self.set_led_color(GREEN, 'pulse'),
+                bg="#4caf50",
+                fg="white",
+                font=("Arial", 10),
+                width=10
+            ).pack(side=tk.LEFT, padx=5)
+            
+            tk.Button(
+                led_frame,
+                text="🔴 Flash",
+                command=lambda: self.set_led_color(RED, 'flash'),
+                bg="#f44336",
+                fg="white",
+                font=("Arial", 10),
+                width=10
+            ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            stats_window,
+            text="Close",
+            command=stats_window.destroy,
+            bg="#757575",
+            fg="white",
+            font=("Arial", 11),
+            width=20
+        ).pack(pady=20)
+        
     def show_welcome_message(self):
         """Show welcome message"""
         for widget in self.results_frame.winfo_children():
@@ -568,6 +981,12 @@ class NutritionScannerApp:
         status_text = "🟢 ONLINE" if self.is_online else "🟠 OFFLINE"
         self.status_label.config(text=status_text, fg=status_color)
         
+        if SENSEHAT_AVAILABLE:
+            if self.is_online:
+                self.set_led_color(GREEN, 'pulse')
+            else:
+                self.set_led_color(ORANGE, 'pulse')
+        
         mode = "ONLINE" if self.is_online else "OFFLINE"
         messagebox.showinfo("Connection Status", f"Mode: {mode}")
         
@@ -576,6 +995,10 @@ class NutritionScannerApp:
         self.scanning = True
         self.start_camera_btn.config(state=tk.DISABLED)
         self.stop_camera_btn.config(state=tk.NORMAL)
+        
+        if SENSEHAT_AVAILABLE:
+            self.set_led_color(BLUE, 'pulse')
+        
         threading.Thread(target=self.camera_scan_loop, daemon=True).start()
         
     def camera_scan_loop(self):
@@ -621,8 +1044,11 @@ class NutritionScannerApp:
         self.stop_camera_btn.config(state=tk.DISABLED)
         self.camera_label.config(image='', text="Camera Stopped", bg="black", fg="white")
         
+        if SENSEHAT_AVAILABLE:
+            self.show_arrow_pattern(ARROW_UP)
+        
     def upload_image(self):
-        """Upload image and scan for barcode - FIXED VERSION"""
+        """Upload image and scan for barcode"""
         print("📁 Opening file dialog...")
         file_path = filedialog.askopenfilename(
             title="Select Barcode Image",
@@ -690,7 +1116,7 @@ class NutritionScannerApp:
         dialog.title("Manual Barcode Entry")
         dialog.geometry("400x180")
         dialog.configure(bg="white")
-        dialog.grab_set()  # Make modal
+        dialog.grab_set()
         
         tk.Label(
             dialog,
@@ -726,7 +1152,11 @@ class NutritionScannerApp:
         entry.bind('<Return>', lambda e: submit())
         
     def process_barcode(self, barcode):
-        """Process barcode"""
+        """Process barcode - FIXED: Removes leading 0 for UPC-A codes"""
+        # Remove leading zero if barcode is 13 digits and starts with 0
+        if len(barcode) == 13 and barcode.startswith('0'):
+            barcode = barcode[1:]
+        
         print(f"🔄 Processing barcode: {barcode}")
         
         for widget in self.results_frame.winfo_children():
@@ -745,6 +1175,12 @@ class NutritionScannerApp:
         
         if product:
             self.display_product_info(product)
+            
+            # Update statistics
+            self.total_scans = self.get_total_scans()
+            self.healthy_scans = self.get_healthy_scans()
+            self.allergen_warnings = self.get_allergen_warnings()
+            self.scan_counter_label.config(text=f"📊 Total Scans: {self.total_scans}")
         else:
             self.display_error(f"Product not found for barcode: {barcode}")
             self.set_led_color(OFF)
@@ -803,7 +1239,16 @@ class NutritionScannerApp:
             product.get('health_score'), product.get('is_healthy')
         ))
         
-        cursor.execute('INSERT INTO scan_history (barcode) VALUES (?)', (product['barcode'],))
+        # Check for allergens
+        product_allergens = set(product.get('allergens', []))
+        if isinstance(product.get('allergens'), str):
+            product_allergens = set(product['allergens'].split(',')) if product['allergens'] else set()
+        has_allergen = 1 if bool(self.user_allergens & product_allergens) else 0
+        
+        cursor.execute(
+            'INSERT INTO scan_history (barcode, is_healthy, has_allergen) VALUES (?, ?, ?)', 
+            (product['barcode'], product.get('is_healthy', 0), has_allergen)
+        )
         conn.commit()
         conn.close()
         
