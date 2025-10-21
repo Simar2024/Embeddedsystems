@@ -367,6 +367,7 @@ class NutritionScannerApp:
                 time.sleep(0.1)
     
     def _update_camera_label_from_array(self, frame):
+        """Update camera label with frame"""
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_pil = Image.fromarray(frame_rgb)
         frame_pil = frame_pil.resize((480, 360))
@@ -375,9 +376,11 @@ class NutritionScannerApp:
         self.camera_label.image = frame_tk
     
     def _set_capture_status_safe(self, text, color):
+        """Safely set capture status text"""
         self.capture_status_label.config(text=text, fg=color)
     
     def _enable_capture_button(self, enabled):
+        """Enable or disable capture button"""
         if enabled:
             self.capture_btn.config(state=tk.NORMAL, bg="#4caf50")
         else:
@@ -793,6 +796,85 @@ class NutritionScannerApp:
             font=("Arial", 16, "bold"),
             bg="white"
         ).pack(pady=20)
+        
+        tk.Label(
+            settings_window,
+            text="Select your allergens:",
+            font=("Arial", 12),
+            bg="white",
+            fg="#666"
+        ).pack(pady=10)
+        
+        # Allergen checkboxes
+        allergen_list = ["dairy", "nuts", "peanuts", "gluten", "soy", 
+                        "eggs", "fish", "shellfish", "coconut", "sesame"]
+        allergen_vars = {}
+        
+        allergen_frame = tk.Frame(settings_window, bg="white")
+        allergen_frame.pack(pady=20)
+        
+        for allergen in allergen_list:
+            var = tk.BooleanVar()
+            var.set(allergen in self.user_allergens)
+            allergen_vars[allergen] = var
+            
+            cb = tk.Checkbutton(
+                allergen_frame,
+                text=allergen.capitalize(),
+                variable=var,
+                font=("Arial", 12),
+                bg="white",
+                anchor="w"
+            )
+            cb.pack(fill=tk.X, padx=20, pady=5)
+        
+        def save_allergens():
+            selected_allergens = set()
+            for allergen, var in allergen_vars.items():
+                if var.get():
+                    selected_allergens.add(allergen)
+            
+            self.save_user_allergens(selected_allergens)
+            
+            allergen_count = len(self.user_allergens)
+            allergen_text = f"Allergens: {allergen_count} Set" if allergen_count > 0 else "No Allergens Set"
+            self.allergen_status_label.config(
+                text=allergen_text,
+                fg="#f44336" if allergen_count > 0 else "#666"
+            )
+            
+            messagebox.showinfo("Success", f"Allergen preferences saved!\n\n{allergen_count} allergen(s) set.")
+            settings_window.destroy()
+        
+        # Buttons
+        btn_frame = tk.Frame(settings_window, bg="white")
+        btn_frame.pack(pady=30)
+        
+        save_btn = tk.Button(
+            btn_frame,
+            text="Save",
+            command=save_allergens,
+            bg="#4caf50",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            width=15,
+            height=2,
+            cursor="hand2"
+        )
+        save_btn.pack(side=tk.LEFT, padx=10)
+        
+        cancel_btn = tk.Button(
+            btn_frame,
+            text="Cancel",
+            command=settings_window.destroy,
+            bg="#757575",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            width=15,
+            height=2,
+            cursor="hand2"
+        )
+        cancel_btn.pack(side=tk.LEFT, padx=10)
 
     def start_add_product_with_barcode(self):
         """Add product by entering a barcode (no camera)"""
@@ -802,16 +884,19 @@ class NutritionScannerApp:
                 "You must be ONLINE to add new products to the database.\n\nPlease connect to the internet and try again."
             )
             return
+        
         barcode = simpledialog.askstring("Add Product (Barcode)", "Enter Barcode:")
         if not barcode:
             return
+        
+        # Remove leading zero for UPC-A conversion if needed
         if len(barcode) == 13 and barcode.startswith('0'):
             barcode = barcode[1:]
+        
         self.open_add_product_form(barcode, None)
 
     def start_add_product_with_image(self):
         """Add product using camera (manual/auto capture), then fill details"""
-        # Reuse the existing camera-based Add Product flow
         self.start_add_product()
     
     def start_add_product(self):
@@ -871,14 +956,10 @@ class NutritionScannerApp:
             self.captured_barcode = None
             self.capture_ready = False
             self.detected_barcode = None
-            self.scanning = True  # Set this BEFORE starting thread
-            
-            # Start camera to capture barcode
+            self.scanning = True
             
             if capture_mode == "manual":
-                # Show the capture button for manual mode
                 self.capture_btn.pack(pady=10)
-                # Disabled until a valid barcode is detected
                 self.capture_btn.config(state=tk.DISABLED, bg="#757575")
                 
                 messagebox.showinfo(
@@ -911,8 +992,11 @@ class NutritionScannerApp:
     
     def add_product_camera_loop(self, auto_capture=False):
         """Camera loop for adding products - supports both auto and manual capture"""
+        # Try to open camera with multiple methods
         chosen_idx = None
-        backends = [None, getattr(cv2, 'CAP_DSHOW', None), getattr(cv2, 'CAP_MSMF', None)]
+        backends = [None, cv2.CAP_DSHOW if hasattr(cv2, 'CAP_DSHOW') else None, 
+                   cv2.CAP_MSMF if hasattr(cv2, 'CAP_MSMF') else None]
+        
         for idx in [0, 1, 2, 3]:
             for backend in backends:
                 try:
@@ -923,20 +1007,26 @@ class NutritionScannerApp:
                         print(f"INFO: Trying camera index {idx} with backend {backend}...")
                         cam = cv2.VideoCapture(idx, backend)
                 except Exception as e:
-                    print(f"WARN: VideoCapture open attempt failed: idx={idx}, backend={backend}, err={e}")
+                    print(f"WARN: VideoCapture failed: idx={idx}, backend={backend}, err={e}")
                     cam = None
+                    
                 if cam is not None and cam.isOpened():
                     self.camera = cam
                     chosen_idx = idx
                     break
             if chosen_idx is not None:
                 break
+        
         if not hasattr(self, 'camera') or self.camera is None or not self.camera.isOpened():
-            print("ERROR: No camera device opened after trying indices 0-3 with multiple backends")
-            self.root.after(0, lambda: messagebox.showerror("Camera Error", "Could not open camera. Please ensure a camera is connected and not in use."))
+            print("ERROR: No camera device opened")
+            self.root.after(0, lambda: messagebox.showerror(
+                "Camera Error", 
+                "Could not open camera. Please ensure a camera is connected and not in use."
+            ))
             self.scanning = False
             self.adding_product = False
             return
+        
         print(f"SUCCESS: Opened camera at index {chosen_idx}")
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -962,7 +1052,7 @@ class NutritionScannerApp:
                 
                 print(f"INFO: Detected barcode: {barcode_data} (Type: {barcode_type})")
                 
-                # Remove leading zero ONLY for 13-digit numeric codes (EAN-13 to UPC-A conversion)
+                # Remove leading zero for UPC-A conversion if needed
                 if len(barcode_data) == 13 and barcode_data.isdigit() and barcode_data.startswith('0'):
                     barcode_data = barcode_data[1:]
                     print(f"INFO: Converted to UPC-A: {barcode_data}")
@@ -995,7 +1085,8 @@ class NutritionScannerApp:
                     self.root.after(0, self.open_add_product_form, barcode_data, image_path)
                 else:
                     # Manual mode - enable capture button
-                    self.root.after(0, self._set_capture_status_safe, f"Barcode detected: {barcode_data}", "green")
+                    self.root.after(0, self._set_capture_status_safe, 
+                                   f"Barcode detected: {barcode_data}", "green")
                     self.root.after(0, self._enable_capture_button, True)
                 
                 no_barcode_count = 0
@@ -1006,9 +1097,9 @@ class NutritionScannerApp:
                 no_barcode_count += 1
                 
                 if no_barcode_count % 30 == 0:
-                    self.root.after(0, self._set_capture_status_safe, "No barcode found - adjust camera position", "#ff9800")
+                    self.root.after(0, self._set_capture_status_safe, 
+                                   "No barcode found - adjust camera position", "#ff9800")
                 if not auto_capture:
-                    # Keep capture disabled until a barcode is detected
                     self.root.after(0, self._enable_capture_button, False)
             
             self.root.after(0, self._update_camera_label_from_array, frame.copy())
@@ -1021,51 +1112,62 @@ class NutritionScannerApp:
     
     def capture_product_image(self, event=None):
         """Capture and save product image when button is clicked"""
-        # Only allow capture when a valid barcode has been detected
         if not (self.capture_ready and self.detected_barcode):
-            messagebox.showinfo("Unable to Read Barcode", "No valid barcode detected. Please adjust and try again." )
+            messagebox.showinfo("Unable to Read Barcode", 
+                               "No valid barcode detected. Please adjust and try again.")
             return
 
-        # Prefer a fresh grab from the camera for the saved frame
+        # Get frame to save
         frame_to_save = None
         barcode = self.detected_barcode
+        
         if getattr(self, 'camera', None) is not None:
             ret, frame = self.camera.read()
             if ret:
                 frame_to_save = frame.copy()
+        
         if frame_to_save is None and self.captured_image is not None:
             frame_to_save = self.captured_image
+            
         if frame_to_save is None:
             messagebox.showerror("Capture Error", "No camera frame available yet. Please try again.")
             return
 
-        # Create default filename and save immediately (capture first, then rename)
+        # Create filename and save
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_base = f"{barcode}_{timestamp}"
-        safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in default_base).strip().replace(' ', '_')
+        safe_base = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' 
+                           for c in default_base).strip().replace(' ', '_')
         image_filename = f"{safe_base}.jpg"
         image_path = os.path.join(PICTURES_DIR, image_filename)
+        
+        # Handle duplicates
         counter = 1
         while os.path.exists(image_path):
             image_filename = f"{safe_base}_{counter}.jpg"
             image_path = os.path.join(PICTURES_DIR, image_filename)
             counter += 1
+            
         cv2.imwrite(image_path, frame_to_save)
         print(f"INFO: Saved image to {image_path}")
 
-        # Optional rename after saving
-        new_base = simpledialog.askstring("Save Image", "Enter file name (without extension):", initialvalue=safe_base)
-        if new_base:
+        # Optional rename
+        new_base = simpledialog.askstring("Save Image", 
+                                         "Enter file name (without extension):", 
+                                         initialvalue=safe_base)
+        if new_base and new_base.strip() != safe_base:
             new_base = new_base.strip()
-        if new_base and new_base != safe_base:
-            new_safe = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' for c in new_base).strip().replace(' ', '_')
+            new_safe = ''.join(c if (c.isalnum() or c in ('_', '-', ' ')) else '_' 
+                             for c in new_base).strip().replace(' ', '_')
             new_filename = f"{new_safe}.jpg"
             new_path = os.path.join(PICTURES_DIR, new_filename)
+            
             c = 1
             while os.path.exists(new_path):
                 new_filename = f"{new_safe}_{c}.jpg"
                 new_path = os.path.join(PICTURES_DIR, new_filename)
                 c += 1
+                
             try:
                 os.replace(image_path, new_path)
                 image_path = new_path
@@ -1079,7 +1181,7 @@ class NutritionScannerApp:
         self.capture_status_label.config(text="Image captured successfully!", fg="#4caf50")
         self.capture_btn.pack_forget()
 
-        # Open the add product form with the detected barcode
+        # Open the add product form
         self.root.after(0, self.open_add_product_form, barcode, image_path)
     
     def open_add_product_form(self, barcode, image_path):
@@ -1141,26 +1243,25 @@ class NutritionScannerApp:
                 text=label_text,
                 font=("Arial", 11, "bold"),
                 bg="white",
-                anchor="w"
+                anchor="w",
+                width=20
             ).pack(side=tk.LEFT, padx=(0, 10))
             
-            if field_type == "text":
-                entry = tk.Entry(field_frame, font=("Arial", 11), width=30)
-            else:
-                entry = tk.Entry(field_frame, font=("Arial", 11), width=15)
-            
+            entry = tk.Entry(field_frame, font=("Arial", 11), width=30)
             entry.insert(0, default)
             entry.pack(side=tk.RIGHT)
             fields[field_name] = entry
         
         # Basic Info
-        tk.Label(form_frame, text="Basic Information", font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
+        tk.Label(form_frame, text="Basic Information", 
+                font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
         create_field("Product Name *", "name")
         create_field("Brand", "brand")
         create_field("Category", "category")
         
         # Nutrition Info
-        tk.Label(form_frame, text="Nutrition (per 100g)", font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
+        tk.Label(form_frame, text="Nutrition (per 100g)", 
+                font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
         create_field("Calories (kcal)", "calories", "0", "number")
         create_field("Protein (g)", "protein", "0.0", "number")
         create_field("Carbs (g)", "carbs", "0.0", "number")
@@ -1171,9 +1272,11 @@ class NutritionScannerApp:
         create_field("Sodium (g)", "sodium", "0.0", "number")
         
         # Allergens
-        tk.Label(form_frame, text="Allergens", font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
+        tk.Label(form_frame, text="Allergens", 
+                font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
         
-        allergen_list = ["dairy", "nuts", "peanuts", "gluten", "soy", "eggs", "fish", "shellfish", "coconut", "sesame"]
+        allergen_list = ["dairy", "nuts", "peanuts", "gluten", "soy", 
+                        "eggs", "fish", "shellfish", "coconut", "sesame"]
         allergen_vars = {}
         
         allergen_frame = tk.Frame(form_frame, bg="white")
@@ -1192,7 +1295,8 @@ class NutritionScannerApp:
             cb.grid(row=i//3, column=i%3, sticky='w', padx=10, pady=2)
         
         # Health Score
-        tk.Label(form_frame, text="Health Information", font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
+        tk.Label(form_frame, text="Health Information", 
+                font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
         create_field("Health Score (0-100)", "health_score", "50", "number")
         
         def save_product():
@@ -1235,14 +1339,23 @@ class NutritionScannerApp:
                 result = response.json()
                 
                 if result.get('success'):
-                    messagebox.showinfo(
-                        "Success",
-                        f"Product '{product_data['name']}' added successfully!\n\n" +
-                        f"Barcode: {barcode}\n" +
-                        f"Image saved to: {image_path}"
-                    )
+                    # Also cache locally
+                    self.cache_product(product_data)
+                    
+                    success_msg = f"Product '{product_data['name']}' added successfully!\n\n"
+                    success_msg += f"Barcode: {barcode}\n"
+                    if image_path:
+                        success_msg += f"Image saved to: {image_path}"
+                    
+                    messagebox.showinfo("Success", success_msg)
                     form_window.destroy()
                     self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
+                    
+                    # Update statistics
+                    self.total_scans = self.get_total_scans()
+                    self.healthy_scans = self.get_healthy_scans()
+                    self.allergen_warnings = self.get_allergen_warnings()
+                    self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
                 else:
                     messagebox.showerror("Error", f"Failed to add product:\n\n{result.get('error')}")
             
@@ -1268,7 +1381,8 @@ class NutritionScannerApp:
         tk.Button(
             button_frame,
             text="Cancel",
-            command=lambda: [form_window.destroy(), self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")],
+            command=lambda: [form_window.destroy(), 
+                            self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")],
             bg="#757575",
             fg="white",
             font=("Arial", 14, "bold"),
@@ -1304,6 +1418,7 @@ class NutritionScannerApp:
             
             print(f"SUCCESS: Image loaded: {image.shape}")
             
+            # Display image in camera label
             display_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             display_pil = Image.fromarray(display_image)
             display_pil = display_pil.resize((480, 360), Image.Resampling.LANCZOS)
@@ -1338,7 +1453,7 @@ class NutritionScannerApp:
             messagebox.showerror("Error", f"Failed to process image:\n\n{str(e)}")
     
     def manual_entry(self):
-        """Manual barcode entry"""
+        """Manual barcode entry to retrieve product information"""
         dialog = tk.Toplevel(self.root)
         dialog.title("Manual Barcode Entry")
         dialog.geometry("400x180")
@@ -1347,7 +1462,7 @@ class NutritionScannerApp:
         
         tk.Label(
             dialog,
-            text="Enter Barcode:",
+            text="Enter Barcode to Retrieve Info:",
             font=("Arial", 12),
             bg="white"
         ).pack(pady=10)
@@ -1366,7 +1481,7 @@ class NutritionScannerApp:
         
         submit_btn = tk.Button(
             dialog,
-            text="Submit",
+            text="Search",
             command=submit,
             bg="#4caf50",
             fg="white",
@@ -1393,6 +1508,7 @@ class NutritionScannerApp:
             bg="white"
         ).pack(pady=20)
         
+        # Scrollable history
         canvas = tk.Canvas(history_window, bg="white")
         scrollbar = ttk.Scrollbar(history_window, orient="vertical", command=canvas.yview)
         history_frame = tk.Frame(canvas, bg="white")
@@ -1408,6 +1524,7 @@ class NutritionScannerApp:
         canvas.pack(side="left", fill="both", expand=True, padx=20, pady=20)
         scrollbar.pack(side="right", fill="y")
         
+        # Get history from database
         conn = sqlite3.connect(SQLITE_DB)
         cursor = conn.cursor()
         cursor.execute('''
@@ -1433,17 +1550,30 @@ class NutritionScannerApp:
                 item_frame = tk.Frame(history_frame, bg="#f5f5f5", relief=tk.RAISED, bd=1)
                 item_frame.pack(fill=tk.X, padx=10, pady=5)
                 
+                # Determine indicator
                 indicator = "[HEALTHY]" if is_healthy else "[WARNING]"
+                indicator_color = "#4caf50" if is_healthy else "#ff9800"
                 if has_allergen:
                     indicator = "[ALLERGEN]"
+                    indicator_color = "#f44336"
+                
+                indicator_label = tk.Label(
+                    item_frame,
+                    text=indicator,
+                    font=("Arial", 10, "bold"),
+                    bg="#f5f5f5",
+                    fg=indicator_color,
+                    width=12
+                )
+                indicator_label.pack(side=tk.LEFT, padx=5, pady=10)
                 
                 tk.Label(
                     item_frame,
-                    text=f"{indicator} {name or 'Unknown Product'}",
-                    font=("Arial", 12, "bold"),
+                    text=f"{name or 'Unknown Product'} ({barcode})",
+                    font=("Arial", 11),
                     bg="#f5f5f5",
                     anchor="w"
-                ).pack(side=tk.LEFT, padx=10, pady=10)
+                ).pack(side=tk.LEFT, padx=10, pady=10, fill=tk.X, expand=True)
                 
                 tk.Label(
                     item_frame,
@@ -1463,422 +1593,3 @@ class NutritionScannerApp:
             width=20,
             cursor="hand2"
         ).pack(pady=20)
-    
-    def view_statistics(self):
-        """View scanning statistics"""
-        stats_window = tk.Toplevel(self.root)
-        stats_window.title("Statistics")
-        stats_window.geometry("600x500")
-        stats_window.configure(bg="white")
-        
-        tk.Label(
-            stats_window,
-            text="Your Scanning Statistics",
-            font=("Arial", 16, "bold"),
-            bg="white"
-        ).pack(pady=20)
-        
-        stats_frame = tk.Frame(stats_window, bg="white")
-        stats_frame.pack(pady=20, padx=40, fill=tk.BOTH, expand=True)
-        
-        total_frame = tk.Frame(stats_frame, bg="#e3f2fd", relief=tk.RAISED, bd=2)
-        total_frame.pack(fill=tk.X, pady=10)
-        
-        tk.Label(
-            total_frame,
-            text="Total Scans",
-            font=("Arial", 14, "bold"),
-            bg="#e3f2fd"
-        ).pack(pady=10)
-        
-        tk.Label(
-            total_frame,
-            text=str(self.total_scans),
-            font=("Arial", 32, "bold"),
-            bg="#e3f2fd",
-            fg="#2196f3"
-        ).pack(pady=5)
-        
-        healthy_frame = tk.Frame(stats_frame, bg="#e8f5e9", relief=tk.RAISED, bd=2)
-        healthy_frame.pack(fill=tk.X, pady=10)
-        
-        tk.Label(
-            healthy_frame,
-            text="Healthy Products",
-            font=("Arial", 14, "bold"),
-            bg="#e8f5e9"
-        ).pack(pady=10)
-        
-        healthy_percentage = (self.healthy_scans / self.total_scans * 100) if self.total_scans > 0 else 0
-        
-        tk.Label(
-            healthy_frame,
-            text=f"{self.healthy_scans} ({healthy_percentage:.1f}%)",
-            font=("Arial", 28, "bold"),
-            bg="#e8f5e9",
-            fg="#4caf50"
-        ).pack(pady=5)
-        
-        allergen_frame = tk.Frame(stats_frame, bg="#ffebee", relief=tk.RAISED, bd=2)
-        allergen_frame.pack(fill=tk.X, pady=10)
-        
-        tk.Label(
-            allergen_frame,
-            text="Allergen Warnings",
-            font=("Arial", 14, "bold"),
-            bg="#ffebee"
-        ).pack(pady=10)
-        
-        tk.Label(
-            allergen_frame,
-            text=str(self.allergen_warnings),
-            font=("Arial", 32, "bold"),
-            bg="#ffebee",
-            fg="#f44336"
-        ).pack(pady=5)
-        
-        if SENSEHAT_AVAILABLE:
-            tk.Label(
-                stats_window,
-                text="Test LED Animations:",
-                font=("Arial", 12),
-                bg="white"
-            ).pack(pady=(20, 10))
-            
-            led_frame = tk.Frame(stats_window, bg="white")
-            led_frame.pack()
-            
-            tk.Button(
-                led_frame,
-                text="Rainbow",
-                command=lambda: self.set_led_color(None, 'rainbow'),
-                bg="#9c27b0",
-                fg="white",
-                font=("Arial", 10),
-                width=10,
-                cursor="hand2"
-            ).pack(side=tk.LEFT, padx=5)
-            
-            tk.Button(
-                led_frame,
-                text="Pulse",
-                command=lambda: self.set_led_color(GREEN, 'pulse'),
-                bg="#4caf50",
-                fg="white",
-                font=("Arial", 10),
-                width=10,
-                cursor="hand2"
-            ).pack(side=tk.LEFT, padx=5)
-            
-            tk.Button(
-                led_frame,
-                text="Flash",
-                command=lambda: self.set_led_color(RED, 'flash'),
-                bg="#f44336",
-                fg="white",
-                font=("Arial", 10),
-                width=10,
-                cursor="hand2"
-            ).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(
-            stats_window,
-            text="Close",
-            command=stats_window.destroy,
-            bg="#757575",
-            fg="white",
-            font=("Arial", 11),
-            width=20,
-            cursor="hand2"
-        ).pack(pady=20)
-    
-    def process_barcode(self, barcode):
-        """Process barcode - FIXED: Removes leading 0 for UPC-A codes"""
-        if len(barcode) == 13 and barcode.startswith('0'):
-            barcode = barcode[1:]
-        
-        print(f"INFO: Processing barcode: {barcode}")
-        
-        for widget in self.results_frame.winfo_children():
-            widget.destroy()
-        
-        loading = tk.Label(
-            self.results_frame,
-            text="Loading...",
-            font=("Arial", 16),
-            bg="white"
-        )
-        loading.pack(pady=50)
-        self.root.update()
-        
-        product = self.get_product_data(barcode)
-        
-        if product:
-            self.display_product_info(product)
-            
-            self.total_scans = self.get_total_scans()
-            self.healthy_scans = self.get_healthy_scans()
-            self.allergen_warnings = self.get_allergen_warnings()
-            self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
-        else:
-            self.display_error(f"No barcode found: {barcode}")
-            self.set_led_color(OFF)
-    
-    def get_product_data(self, barcode):
-        """Get product from API or cache"""
-        product = None
-        
-        if self.is_online:
-            try:
-                print(f"INFO: API call: {API_BASE_URL}/get_product.php?barcode={barcode}")
-                response = requests.get(
-                    f"{API_BASE_URL}/get_product.php?barcode={barcode}",
-                    timeout=5
-                )
-                
-                print(f"INFO: Response: {response.status_code}")
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('success'):
-                        product = data.get('data')
-                        self.cache_product(product)
-                        print(f"SUCCESS: Fetched from database: {product['name']}")
-                    else:
-                        print(f"ERROR: API error: {data.get('error')}")
-                else:
-                    print(f"ERROR: HTTP error: {response.status_code}")
-            except Exception as e:
-                print(f"ERROR: API Error: {e}")
-        
-        if not product:
-            product = self.get_cached_product(barcode)
-            if product:
-                print(f"SUCCESS: Loaded from cache: {product['name']}")
-        
-        return product
-    
-    def cache_product(self, product):
-        """Cache product"""
-        conn = sqlite3.connect(SQLITE_DB)
-        cursor = conn.cursor()
-        
-        allergens_str = ','.join(product.get('allergens', [])) if isinstance(product.get('allergens'), list) else product.get('allergens', '')
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO products 
-            (barcode, name, brand, category, calories, protein, carbs, sugar, fats, 
-            saturated_fats, fiber, sodium, allergens, health_score, is_healthy, cached_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (
-            product['barcode'], product['name'], product.get('brand'), product.get('category'),
-            product.get('calories'), product.get('protein'), product.get('carbs'), 
-            product.get('sugar'), product.get('fats'), product.get('saturated_fats'),
-            product.get('fiber'), product.get('sodium'), allergens_str,
-            product.get('health_score'), product.get('is_healthy')
-        ))
-        
-        product_allergens = set(product.get('allergens', []))
-        if isinstance(product.get('allergens'), str):
-            product_allergens = set(product['allergens'].split(',')) if product['allergens'] else set()
-        has_allergen = 1 if bool(self.user_allergens & product_allergens) else 0
-        
-        cursor.execute(
-            'INSERT INTO scan_history (barcode, is_healthy, has_allergen) VALUES (?, ?, ?)', 
-            (product['barcode'], product.get('is_healthy', 0), has_allergen)
-        )
-        conn.commit()
-        conn.close()
-    
-    def get_cached_product(self, barcode):
-        """Get from cache"""
-        conn = sqlite3.connect(SQLITE_DB)
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM products WHERE barcode = ?', (barcode,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            columns = ['id', 'barcode', 'name', 'brand', 'category', 'calories', 'protein', 'carbs', 
-                    'sugar', 'fats', 'saturated_fats', 'fiber', 'sodium', 'allergens', 
-                    'health_score', 'is_healthy', 'cached_at']
-            product = dict(zip(columns, row))
-            if product['allergens']:
-                product['allergens'] = product['allergens'].split(',')
-            else:
-                product['allergens'] = []
-            return product
-        return None
-    
-    def display_product_info(self, product):
-        """Display product"""
-        for widget in self.results_frame.winfo_children():
-            widget.destroy()
-        
-        product_allergens = set(product.get('allergens', []))
-        if isinstance(product.get('allergens'), str):
-            product_allergens = set(product['allergens'].split(',')) if product['allergens'] else set()
-        
-        has_allergen = bool(self.user_allergens & product_allergens)
-        
-        if has_allergen:
-            self.set_led_color(RED, 'flash')
-        elif product.get('is_healthy'):
-            self.set_led_color(GREEN, 'solid')
-        else:
-            self.set_led_color(ORANGE, 'solid')
-        
-        name_label = tk.Label(
-            self.results_frame,
-            text=product['name'],
-            font=("Arial", 18, "bold"),
-            bg="white",
-            wraplength=350
-        )
-        name_label.pack(pady=10)
-        
-        if product.get('brand'):
-            brand_label = tk.Label(
-                self.results_frame,
-                text=product['brand'],
-                font=("Arial", 12),
-                bg="white",
-                fg="#666"
-            )
-            brand_label.pack()
-        
-        if has_allergen:
-            allergen_frame = tk.LabelFrame(
-                self.results_frame,
-                text="ALLERGEN ALERT",
-                font=("Arial", 14, "bold"),
-                bg="#ffebee",
-                fg="#f44336",
-                relief=tk.RAISED,
-                bd=3
-            )
-            allergen_frame.pack(pady=15, padx=20, fill=tk.X)
-            
-            matching_allergens = self.user_allergens & product_allergens
-            allergens_text = ", ".join([a.upper() for a in matching_allergens])
-            
-            tk.Label(
-                allergen_frame,
-                text=f"WARNING: Contains {allergens_text}",
-                font=("Arial", 12, "bold"),
-                bg="#ffebee",
-                fg="#f44336",
-                wraplength=350
-            ).pack(padx=10, pady=10)
-        
-        health_score = product.get('health_score', 50)
-        score_color = "#4caf50" if health_score >= 70 else "#ff9800" if health_score >= 40 else "#f44336"
-        
-        score_frame = tk.Frame(self.results_frame, bg=score_color, relief=tk.RAISED, bd=2)
-        score_frame.pack(pady=10, padx=20, fill=tk.X)
-        
-        tk.Label(
-            score_frame,
-            text=f"Health Score: {health_score}/100",
-            font=("Arial", 14, "bold"),
-            bg=score_color,
-            fg="white"
-        ).pack(pady=10)
-        
-        nutrition_frame = tk.LabelFrame(
-            self.results_frame,
-            text="Nutrition Facts (per 100g)",
-            font=("Arial", 12, "bold"),
-            bg="white"
-        )
-        nutrition_frame.pack(pady=10, padx=20, fill=tk.X)
-        
-        nutrition_data = [
-            ("Calories", product.get('calories'), "kcal"),
-            ("Protein", product.get('protein'), "g"),
-            ("Carbs", product.get('carbs'), "g"),
-            ("Sugar", product.get('sugar'), "g"),
-            ("Fats", product.get('fats'), "g"),
-            ("Fiber", product.get('fiber'), "g"),
-            ("Sodium", product.get('sodium'), "g"),
-        ]
-        
-        for label, value, unit in nutrition_data:
-            if value is not None:
-                row = tk.Frame(nutrition_frame, bg="white")
-                row.pack(fill=tk.X, padx=10, pady=2)
-                
-                tk.Label(
-                    row,
-                    text=label,
-                    font=("Arial", 11),
-                    bg="white",
-                    anchor="w"
-                ).pack(side=tk.LEFT)
-                
-                tk.Label(
-                    row,
-                    text=f"{value} {unit}",
-                    font=("Arial", 11, "bold"),
-                    bg="white",
-                    anchor="e"
-                ).pack(side=tk.RIGHT)
-        
-        if product_allergens and len(product_allergens) > 0:
-            allergen_frame2 = tk.LabelFrame(
-                self.results_frame,
-                text="Contains Allergens",
-                font=("Arial", 11, "bold"),
-                bg="white"
-            )
-            allergen_frame2.pack(pady=10, padx=20, fill=tk.X)
-            
-            allergens_text = ", ".join([a.capitalize() for a in product_allergens])
-            tk.Label(
-                allergen_frame2,
-                text=allergens_text,
-                font=("Arial", 10),
-                bg="white",
-                fg="#666",
-                wraplength=350
-            ).pack(padx=10, pady=5)
-    
-    def display_error(self, message):
-        """Display error"""
-        for widget in self.results_frame.winfo_children():
-            widget.destroy()
-        
-        error_label = tk.Label(
-            self.results_frame,
-            text="ERROR",
-            font=("Arial", 18, "bold"),
-            bg="white",
-            fg="#f44336"
-        )
-        error_label.pack(pady=20)
-        
-        message_label = tk.Label(
-            self.results_frame,
-            text=message,
-            font=("Arial", 12),
-            bg="white",
-            wraplength=350
-        )
-        message_label.pack(pady=10)
-
-
-def main():
-    root = tk.Tk()
-    app = NutritionScannerApp(root)
-    
-    try:
-        root.mainloop()
-    finally:
-        if SENSEHAT_AVAILABLE:
-            sense.clear()
-        print("INFO: Application closed")
-
-
-if __name__ == "__main__":
-    main()
