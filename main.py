@@ -1170,87 +1170,125 @@ class NutritionScannerApp:
         
         def save_product():
             """Save product to database via API or local cache"""
-            # Validate required fields
-            if not fields["name"].get().strip():
-                messagebox.showerror("Error", "Product name is required!")
-                return
-            
-            print("INFO: Saving product...")
-            
-            # Collect allergens
-            selected_allergens = [allergen for allergen, var in allergen_vars.items() if var.get()]
-            
-            # Build product data
             try:
-                product_data = {
-                    "barcode": barcode,
-                    "name": fields["name"].get().strip(),
-                    "brand": fields["brand"].get().strip() or "",
-                    "category": fields["category"].get().strip() or "",
-                    "calories": float(fields["calories"].get() or 0),
-                    "protein": float(fields["protein"].get() or 0),
-                    "carbs": float(fields["carbs"].get() or 0),
-                    "sugar": float(fields["sugar"].get() or 0),
-                    "fats": float(fields["fats"].get() or 0),
-                    "saturated_fats": float(fields["saturated_fats"].get() or 0),
-                    "fiber": float(fields["fiber"].get() or 0),
-                    "sodium": float(fields["sodium"].get() or 0),
-                    "allergens": selected_allergens,
-                    "health_score": int(fields["health_score"].get() or 50),
-                    "is_healthy": 1 if int(fields["health_score"].get() or 50) >= 60 else 0
-                }
-                print(f"DEBUG: Product data prepared: {product_data['name']} - {barcode}")
-            except ValueError as e:
-                messagebox.showerror("Error", "Please enter valid numbers for nutrition values")
-                return
-            
-            # ALWAYS save to local cache first
-            self.cache_product(product_data)
-            print(f"SUCCESS: Product saved to local database")
-            
-            # Try to save to API if online
-            api_success = False
-            if self.is_online:
+                # Validate required fields
+                if not fields["name"].get().strip():
+                    try:
+                        messagebox.showerror("Error", "Product name is required!", parent=form_window)
+                    finally:
+                        try:
+                            save_btn.config(state=tk.NORMAL, text="Save Product")
+                        except Exception:
+                            pass
+                    return
+                
+                print("INFO: Saving product...")
                 try:
-                    response = requests.post(
-                        f"{API_BASE_URL}/add_product.php",
-                        json=product_data,
-                        timeout=10
-                    )
-                    if response.status_code == 200:
-                        result = response.json()
-                        api_success = result.get('success', False)
-                        if api_success:
-                            print("SUCCESS: Product also saved to online API")
+                    save_btn.config(state=tk.DISABLED, text="Saving...")
+                except Exception:
+                    pass
+                
+                # Collect allergens
+                selected_allergens = [allergen for allergen, var in allergen_vars.items() if var.get()]
+                
+                # Build product data
+                try:
+                    product_data = {
+                        "barcode": barcode,
+                        "name": fields["name"].get().strip(),
+                        "brand": fields["brand"].get().strip() or "",
+                        "category": fields["category"].get().strip() or "",
+                        "calories": float(fields["calories"].get() or 0),
+                        "protein": float(fields["protein"].get() or 0),
+                        "carbs": float(fields["carbs"].get() or 0),
+                        "sugar": float(fields["sugar"].get() or 0),
+                        "fats": float(fields["fats"].get() or 0),
+                        "saturated_fats": float(fields["saturated_fats"].get() or 0),
+                        "fiber": float(fields["fiber"].get() or 0),
+                        "sodium": float(fields["sodium"].get() or 0),
+                        "allergens": selected_allergens,
+                        "health_score": int(fields["health_score"].get() or 50),
+                        "is_healthy": 1 if int(fields["health_score"].get() or 50) >= 60 else 0
+                    }
+                    print(f"DEBUG: Product data prepared: {product_data['name']} - {barcode}")
+                except ValueError as e:
+                    try:
+                        messagebox.showerror("Error", "Please enter valid numbers for nutrition values", parent=form_window)
+                    finally:
+                        try:
+                            save_btn.config(state=tk.NORMAL, text="Save Product")
+                        except Exception:
+                            pass
+                    return
+                
+                try:
+                    # ALWAYS save to local cache first
+                    self.cache_product(product_data)
+                    print(f"SUCCESS: Product saved to local database")
                 except Exception as e:
-                    print(f"WARNING: Could not save to API: {e}")
-            
-            # Show success (product is saved locally at minimum)
-            success_msg = f"Product '{product_data['name']}' saved successfully!\n\n"
-            success_msg += f"Barcode: {barcode}\n"
-            if not api_success and self.is_online:
-                success_msg += "\n(Saved locally - API unavailable)"
-            elif not self.is_online:
-                success_msg += "\n(Saved locally - Offline mode)"
-            
-            if image_path:
-                success_msg += f"\nImage saved to: {image_path}"
-            
-            messagebox.showinfo("Success", success_msg)
-            form_window.destroy()
-            self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
-            
-            # Update statistics
-            self.total_scans = self.get_total_scans()
-            self.healthy_scans = self.get_healthy_scans()
-            self.allergen_warnings = self.get_allergen_warnings()
-            self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
+                    try:
+                        save_btn.config(state=tk.NORMAL, text="Save Product")
+                    except Exception:
+                        pass
+                    messagebox.showerror("Error", f"Failed to save locally: {e}", parent=form_window)
+                    return
+                
+                # Show success immediately (local save done) and sync to API in background if online
+                success_msg = f"Product '{product_data['name']}' saved successfully!\n\n"
+                success_msg += f"Barcode: {barcode}\n"
+                if self.is_online:
+                    success_msg += "\n(Syncing to API in background)"
+                else:
+                    success_msg += "\n(Saved locally - Offline mode)"
+                if image_path:
+                    success_msg += f"\nImage saved to: {image_path}"
+
+                try:
+                    messagebox.showinfo("Success", success_msg, parent=form_window)
+                finally:
+                    form_window.destroy()
+                    self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
+
+                # Update statistics
+                self.total_scans = self.get_total_scans()
+                self.healthy_scans = self.get_healthy_scans()
+                self.allergen_warnings = self.get_allergen_warnings()
+                self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
+
+                # Background API sync (non-blocking)
+                def _sync_to_api(pd):
+                    if not self.is_online:
+                        return
+                    try:
+                        response = requests.post(
+                            f"{API_BASE_URL}/add_product.php",
+                            json=pd,
+                            timeout=10
+                        )
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get('success', False):
+                                print("SUCCESS: Product also saved to online API")
+                            else:
+                                print(f"WARNING: API returned error: {result}")
+                        else:
+                            print(f"WARNING: API HTTP status: {response.status_code}")
+                    except Exception as e:
+                        print(f"WARNING: Could not save to API: {e}")
+
+                threading.Thread(target=_sync_to_api, args=(product_data,), daemon=True).start()
+            except Exception as e:
+                try:
+                    save_btn.config(state=tk.NORMAL, text="Save Product")
+                except Exception:
+                    pass
+                messagebox.showerror("Error", f"Unexpected error: {e}", parent=form_window)
         
         # Buttons
         button_frame = tk.Frame(form_frame, bg="white")
         button_frame.pack(pady=30)
         
-        tk.Button(
+        save_btn = tk.Button(
             button_frame,
             text="Save Product",
             command=save_product,
@@ -1260,7 +1298,8 @@ class NutritionScannerApp:
             width=15,
             height=2,
             cursor="hand2"
-        ).pack(side=tk.LEFT, padx=10)
+        )
+        save_btn.pack(side=tk.LEFT, padx=10)
         
         tk.Button(
             button_frame,
