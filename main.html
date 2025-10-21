@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Nutrition Scanner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f0f0;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Full screen styles */
+        .fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: auto;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .control-info {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-right: 10px;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: #e8e8e8;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+        }
+
+        .status-online {
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .status-offline {
+            color: #ff9800;
+            font-weight: bold;
+        }
+
+        /* Main Content */
+        .main-container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            height: calc(100vh - 140px);
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .left-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            text-align: center;
+        }
+
+        /* Camera/Scanner Area */
+        .scanner-container {
+            background: #000;
+            border-radius: 8px;
+            position: relative;
+            width: 100%;
+            height: 360px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .scanner-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 150px;
+            border: 3px solid #4caf50;
+            border-radius: 10px;
+            opacity: 0.7;
+        }
+
+        .scanner-message {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .scanner-inactive {
+            color: white;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        /* Capture Status */
+        .capture-status {
+            text-align: center;
+            padding: 10px;
+            font-size: 14px;
+            min-height: 30px;
+        }
+
+        .capture-status.success {
+            color: #4caf50;
+        }
+
+        .capture-status.warning {
+            color: #ff9800;
+        }
+
+        .capture-status.error {
+            color: #f44336;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #2196f3;
+            color: white;
+        }
+
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-purple {
+            background: #9c27b0;
+            color: white;
+        }
+
+        .btn-cyan {
+            background: #00bcd4;
+            color: white;
+        }
+
+        .btn-orange {
+            background: #ff5722;
+            color: white;
+        }
+
+        .btn-gray {
+            background: #757575;
+            color: white;
+        }
+
+        .btn-large {
+            padding: 20px 30px;
+            font-size: 16px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .button-grid .btn {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        /* Results Display */
+        .results-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .welcome-message {
+            text-align: center;
+            color: #666;
+            padding: 50px 20px;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        .product-info {
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .product-name {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .product-brand {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .alert-box {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            animation: pulse 1s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .alert-allergen {
+            background: #ffebee;
+            border: 2px solid #f44336;
+            color: #f44336;
+        }
+
+        .health-score {
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .score-good { background: #4caf50; }
+        .score-medium { background: #ff9800; }
+        .score-bad { background: #f44336; }
+
+        .nutrition-facts {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .nutrition-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .nutrition-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .nutrition-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #2196f3;
+            box-shadow: 0 0 5px rgba(33, 150, 243, 0.3);
+        }
+
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* History & Stats */
+        .history-item {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-item-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .history-item-date {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* LED Indicator (simulated) */
+        .led-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #333;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .led-green { background: #4caf50; box-shadow: 0 0 20px #4caf50; }
+        .led-red { background: #f44336; box-shadow: 0 0 20px #f44336; }
+        .led-orange { background: #ff9800; box-shadow: 0 0 20px #ff9800; }
+        .led-blue { background: #2196f3; box-shadow: 0 0 20px #2196f3; }
+        .led-off { background: #333; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+
+        @keyframes led-flash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .led-flash {
+            animation: led-flash 0.5s ease infinite;
+        }
+
+        /* File Input Styling */
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 12px 20px;
+            background: #2196f3;
+            color: white;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-label:hover {
+            background: #1976d2;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #2196f3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .button-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .checkbox-group {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- LED Indicator -->
+    <div id="ledIndicator" class="led-indicator led-off"></div>
+
+    <!-- Main Container -->
+    <div id="app" class="fullscreen">
+        <!-- Header -->
+        <div class="header">
+            <h1>Smart Nutrition Scanner</h1>
+            <div class="header-controls">
+                <span class="control-info">Control: Mouse/Touch | F11: Fullscreen</span>
+                <button class="btn btn-danger" onclick="exitApp()">EXIT</button>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div class="status-item">
+                    <span id="connectionStatus" class="status-online">ONLINE</span>
+                </div>
+                <div class="status-item">
+                    <span id="allergenStatus">No Allergens Set</span>
+                </div>
+                <div class="status-item">
+                    <span id="scanCounter">Total Scans: 0</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="refreshConnection()">Refresh</button>
+                <button class="btn btn-purple" onclick="openSettings()">Settings</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-container">
+            <!-- Left Panel - Scanner -->
+            <div class="panel left-panel">
+                <h2 class="panel-title">Scan Area</h2>
+                
+                <div class="scanner-container">
+                    <video id="video" style="display: none;"></video>
+                    <canvas id="canvas"></canvas>
+                    <div id="scannerOverlay" class="scanner-overlay" style="display: none;"></div>
+                    <div id="scannerMessage" class="scanner-message" style="display: none;">Point at barcode</div>
+                    <div id="scannerInactive" class="scanner-inactive">Camera Off</div>
+                </div>
+
+                <div id="captureStatus" class="capture-status"></div>
+
+                <button id="captureBtn" class="btn btn-success btn-large" onclick="captureProductImage()" style="display: none; width: 100%; margin-bottom: 10px;">
+                    CAPTURE IMAGE
+                </button>
+
+                <div class="button-grid">
+                    <button class="btn btn-primary" onclick="startScanning()">
+                        Start<br>Scanning
+                    </button>
+                    <button class="btn btn-gray" onclick="stopScanning()">
+                        Stop<br>Scanning
+                    </button>
+                    <button class="btn btn-primary" onclick="uploadImage()">
+                        Upload<br>Image
+                    </button>
+                    <button class="btn btn-warning" onclick="manualEntry()">
+                        Manual<br>Entry
+                    </button>
+                    <button class="btn btn-purple" onclick="viewHistory()">
+                        View<br>History
+                    </button>
+                    <button class="btn btn-cyan" onclick="viewStatistics()">
+                        View<br>Statistics
+                    </button>
+                    <button class="btn btn-orange" onclick="startAddProductBarcode()">
+                        Add Product<br>(Barcode)
+                    </button>
+                    <button class="btn btn-orange" onclick="startAddProductCamera()">
+                        Add Product<br>(Camera)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Panel - Results -->
+            <div class="panel right-panel">
+                <h2 class="panel-title">Nutrition Information</h2>
+                <div id="resultsContainer" class="results-container">
+                    <div class="welcome-message">
+                        Welcome!<br><br>
+                        Scan a barcode to get started<br><br>
+                        Set your allergens in Settings<br><br>
+                        Click "Start Scanning" or upload an image
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">My Allergen Preferences</div>
+            <div class="modal-body">
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-dairy" value="dairy">
+                        <span>Dairy</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-nuts" value="nuts">
+                        <span>Nuts</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-peanuts" value="peanuts">
+                        <span>Peanuts</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-gluten" value="gluten">
+                        <span>Gluten</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-soy" value="soy">
+                        <span>Soy</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-eggs" value="eggs">
+                        <span>Eggs</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-fish" value="fish">
+                        <span>Fish</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-shellfish" value="shellfish">
+                        <span>Shellfish</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-coconut" value="coconut">
+                        <span>Coconut</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="allergen-sesame" value="sesame">
+                        <span>Sesame</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-success" onclick="saveSettings()">Save</button>
+                <button class="btn btn-gray" onclick="closeModal('settingsModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="productFormModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">Add New Product to Database</div>
+            <div class="modal-body">
+                <p id="productFormBarcode" style="color: #666; margin-bottom: 15px;"></p>
+                
+                <h4 style="margin: 20px 0 10px;">Basic Information</h4>
+                <div class="form-group">
+                    <label class="form-label">Product Name *</label>
+                    <input type="text" id="productName" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Brand</label>
+                    <input type="text" id="productBrand" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Category</label>
+                    <input type="text" id="productCategory" class="form-input">
+                </div>
+
+                <h4 style="margin: 20px 0 10px;">Nutrition (per 100g)</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label class="form-label">Calories (kcal)</label>
+                        <input type="number" id="productCalories" class="form-input" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Protein (g)</label>
+                        <input type="number" id="productProtein" class="form-input" value="0" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Carbs (g)</label>
+                        <input type="number" id="productCarbs" class="form-input" value="0" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sugar (g)</label>
+                        <input type="number" id="productSugar" class="form-input" value="0" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fats (g)</label>
+                        <input type="number" id="productFats" class="form-input" value="0" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Saturated Fats (g)</label>
+                        <input type="number" id="productSatFats" class="form-input" value="0" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fiber (g)</label>
+                        <input type="number" id="productFiber" class="form-input" value="0" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sodium (g)</label>
+                        <input type="number" id="productSodium" class="form-input" value="0" step="0.1">
+                    </div>
+                </div>
+
+                <h4 style="margin: 20px 0 10px;">Allergens</h4>
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="product-allergen-dairy" value="dairy">
+                        <span>Dairy</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="product-allergen-nuts" value="nuts">
+                        <span>Nuts</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="product-allergen-peanuts" value="peanuts">
+                        <span>Peanuts</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="product-allergen-gluten" value="gluten">
+                        <span>Gluten</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="product-allergen-soy" value="soy">
+                        <span>Soy</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="product-allergen-eggs" value="eggs">
+                        <span>Eggs</span>
+                    </label>
+                </div>
+
+                <h4 style="margin: 20px 0 10px;">Health Score</h4>
+                <div class="form-group">
+                    <label class="form-label">Health Score (0-100)</label>
+                    <input type="number" id="productHealthScore" class="form-input" value="50" min="0" max="100">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-success" onclick="saveProduct()">Save Product</button>
+                <button class="btn btn-gray" onclick="closeModal('productFormModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Scan History</div>
+            <div class="modal-body" id="historyContent">
+                <!-- History items will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-gray" onclick="closeModal('historyModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="statsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Your Scanning Statistics</div>
+            <div class="modal-body" id="statsContent">
+                <!-- Stats will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-gray" onclick="closeModal('statsModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input -->
+    <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
+
+    <!-- Include QuaggaJS from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost/api';
+        let isOnline = true;
+        let scanning = false;
+        let stream = null;
+        let userAllergens = new Set();
+        let scanHistory = [];
+        let totalScans = 0;
+        let healthyScans = 0;
+        let allergenWarnings = 0;
+        let currentBarcode = null;
+        let addingProduct = false;
+        let captureMode = 'auto';
+        let capturedImage = null;
+        let detectedBarcode = null;
+
+        // Initialize app
+        window.onload = function() {
+            loadFromLocalStorage();
+            updateStatusBar();
+            checkConnection();
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'F11') {
+                    e.preventDefault();
+                    toggleFullscreen();
+                }
+                if (e.key === 'Escape') {
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen();
+                    }
+                }
+            });
+        };
+
+        // Local Storage Management
+        function loadFromLocalStorage() {
+            const savedAllergens = localStorage.getItem('userAllergens');
+            if (savedAllergens) {
+                userAllergens = new Set(JSON.parse(savedAllergens));
+            }
+            
+            const savedHistory = localStorage.getItem('scanHistory');
+            if (savedHistory) {
+                scanHistory = JSON.parse(savedHistory);
+            }
+            
+            totalScans = parseInt(localStorage.getItem('totalScans') || '0');
+            healthyScans = parseInt(localStorage.getItem('healthyScans') || '0');
+            allergenWarnings = parseInt(localStorage.getItem('allergenWarnings') || '0');
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('userAllergens', JSON.stringify(Array.from(userAllergens)));
+            localStorage.setItem('scanHistory', JSON.stringify(scanHistory));
+            localStorage.setItem('totalScans', totalScans.toString());
+            localStorage.setItem('healthyScans', healthyScans.toString());
+            localStorage.setItem('allergenWarnings', allergenWarnings.toString());
+        }
+
+        // Connection Management
+        async function checkConnection() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/test_connection.php`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                isOnline = response.ok;
+            } catch (error) {
+                isOnline = false;
+            }
+            updateConnectionStatus();
+        }
+
+        function updateConnectionStatus() {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.textContent = isOnline ? 'ONLINE' : 'OFFLINE';
+            statusEl.className = isOnline ? 'status-online' : 'status-offline';
+            setLED(isOnline ? 'green' : 'orange');
+        }
+
+        function refreshConnection() {
+            checkConnection();
+            alert(isOnline ? 'Connection Status: ONLINE' : 'Connection Status: OFFLINE');
+        }
+
+        // LED Indicator Simulation
+        function setLED(color, flash = false) {
+            const led = document.getElementById('ledIndicator');
+            led.className = `led-indicator led-${color}`;
+            if (flash) {
+                led.classList.add('led-flash');
+            }
+        }
+
+        // Status Bar Updates
+        function updateStatusBar() {
+            document.getElementById('allergenStatus').textContent = 
+                userAllergens.size > 0 ? `Allergens: ${userAllergens.size} Set` : 'No Allergens Set';
+            document.getElementById('scanCounter').textContent = `Total Scans: ${totalScans}`;
+        }
+
+        // Camera and Scanning Functions
+        async function startScanning() {
+            if (scanning) return;
+            
+            scanning = true;
+            addingProduct = false;
+            document.getElementById('scannerInactive').style.display = 'none';
+            document.getElementById('video').style.display = 'block';
+            document.getElementById('scannerOverlay').style.display = 'block';
+            document.getElementById('scannerMessage').style.display = 'block';
+            
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                // Initialize Quagga
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: video,
+                        constraints: {
+                            facingMode: "environment"
+                        }
+                    },
+                    decoder: {
+                        readers: [
+                            "ean_reader",
+                            "ean_8_reader", 
+                            "code_128_reader",
+                            "code_39_reader",
+                            "upc_reader",
+                            "upc_e_reader"
+                        ]
+                    },
+                    locate: true
+                }, function(err) {
+                    if (err) {
+                        console.error(err);
+                        alert('Failed to initialize camera');
+                        stopScanning();
+                        return;
+                    }
+                    Quagga.start();
+                });
+
+                // Handle barcode detection
+                Quagga.onDetected(function(result) {
+                    if (result && result.codeResult && result.codeResult.code) {
+                        let barcode = result.codeResult.code;
+                        
+                        // Convert EAN-13 to UPC-A if needed
+                        if (barcode.length === 13 && barcode.startsWith('0')) {
+                            barcode = barcode.substring(1);
+                        }
+                        
+                        if (!addingProduct) {
+                            // Normal scanning mode
+                            processBarcode(barcode);
+                            stopScanning();
+                        } else {
+                            // Add product mode
+                            detectedBarcode = barcode;
+                            document.getElementById('captureStatus').textContent = `Barcode detected: ${barcode}`;
+                            document.getElementById('captureStatus').className = 'capture-status success';
+                            
+                            if (captureMode === 'auto') {
+                                captureProductImage();
+                            } else {
+                                document.getElementById('captureBtn').style.display = 'block';
+                                document.getElementById('captureBtn').disabled = false;
+                            }
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Camera error:', error);
+                alert('Camera access denied or not available');
+                stopScanning();
+            }
+        }
+
+        function stopScanning() {
+            scanning = false;
+            addingProduct = false;
+            
+            Quagga.stop();
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            document.getElementById('video').style.display = 'none';
+            document.getElementById('scannerOverlay').style.display = 'none';
+            document.getElementById('scannerMessage').style.display = 'none';
+            document.getElementById('scannerInactive').style.display = 'block';
+            document.getElementById('captureBtn').style.display = 'none';
+            document.getElementById('captureStatus').textContent = '';
+        }
+
+        // Process Barcode
+        async function processBarcode(barcode) {
+            // Remove leading zero for UPC-A
+            if (barcode.length === 13 && barcode.startsWith('0')) {
+                barcode = barcode.substring(1);
+            }
+            
+            currentBarcode = barcode;
+            displayLoading();
+            
+            let product = null;
+            
+            // Try to fetch from API if online
+            if (isOnline) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/get_product.php?barcode=${barcode}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        product = data.data;
+                        cacheProduct(product);
+                    }
+                } catch (error) {
+                    console.error('API Error:', error);
+                }
+            }
+            
+            // Try local cache if not found
+            if (!product) {
+                product = getCachedProduct(barcode);
+            }
+            
+            if (product) {
+                displayProduct(product);
+                addToHistory(product);
+            } else {
+                displayError(`Product not found: ${barcode}`);
+                setLED('off');
+            }
+        }
+
+        // Cache Management
+        function cacheProduct(product) {
+            const cachedProducts = JSON.parse(localStorage.getItem('cachedProducts') || '{}');
+            cachedProducts[product.barcode] = product;
+            localStorage.setItem('cachedProducts', JSON.stringify(cachedProducts));
+        }
+
+        function getCachedProduct(barcode) {
+            const cachedProducts = JSON.parse(localStorage.getItem('cachedProducts') || '{}');
+            return cachedProducts[barcode] || null;
+        }
+
+        // Display Functions
+        function displayLoading() {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '<div class="spinner"></div><p style="text-align: center;">Loading...</p>';
+        }
+
+        function displayProduct(product) {
+            const container = document.getElementById('resultsContainer');
+            
+            // Check for allergens
+            const productAllergens = new Set(product.allergens || []);
+            const hasAllergen = [...userAllergens].some(a => productAllergens.has(a));
+            
+            // Update stats
+            totalScans++;
+            if (product.is_healthy) healthyScans++;
+            if (hasAllergen) allergenWarnings++;
+            saveToLocalStorage();
+            updateStatusBar();
+            
+            // Set LED
+            if (hasAllergen) {
+                setLED('red', true);
+            } else if (product.is_healthy) {
+                setLED('green');
+            } else {
+                setLED('orange');
+            }
+            
+            // Build HTML
+            let html = '<div class="product-info">';
+            
+            html += `<div class="product-name">${product.name}</div>`;
+            if (product.brand) {
+                html += `<div class="product-brand">${product.brand}</div>`;
+            }
+            
+            // Allergen warning
+            if (hasAllergen) {
+                const matchingAllergens = [...userAllergens].filter(a => productAllergens.has(a));
+                html += `
+                    <div class="alert-box alert-allergen">
+                        <strong>⚠️ ALLERGEN ALERT</strong><br>
+                        Contains: ${matchingAllergens.map(a => a.toUpperCase()).join(', ')}
+                    </div>
+                `;
+            }
+            
+            // Health score
+            const score = product.health_score || 50;
+            const scoreClass = score >= 70 ? 'score-good' : score >= 40 ? 'score-medium' : 'score-bad';
+            html += `
+                <div class="health-score ${scoreClass}">
+                    Health Score: ${score}/100
+                </div>
+            `;
+            
+            // Nutrition facts
+            html += `
+                <div class="nutrition-facts">
+                    <div class="nutrition-title">Nutrition Facts (per 100g)</div>
+            `;
+            
+            const nutritionItems = [
+                ['Calories', product.calories, 'kcal'],
+                ['Protein', product.protein, 'g'],
+                ['Carbs', product.carbs, 'g'],
+                ['Sugar', product.sugar, 'g'],
+                ['Fats', product.fats, 'g'],
+                ['Fiber', product.fiber, 'g'],
+                ['Sodium', product.sodium, 'g']
+            ];
+            
+            nutritionItems.forEach(([label, value, unit]) => {
+                if (value !== null && value !== undefined) {
+                    html += `
+                        <div class="nutrition-item">
+                            <span>${label}</span>
+                            <span><strong>${value} ${unit}</strong></span>
+                        </div>
+                    `;
+                }
+            });
+            
+            html += '</div>';
+            
+            // All allergens in product
+            if (productAllergens.size > 0) {
+                html += `
+                    <div class="nutrition-facts">
+                        <div class="nutrition-title">Contains Allergens</div>
+                        <div style="padding: 10px;">${[...productAllergens].map(a => a.charAt(0).toUpperCase() + a.slice(1)).join(', ')}</div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            
+            container.innerHTML = html;
+        }
+
+        function displayError(message) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = `
+                <div style="text-align: center; padding: 50px;">
+                    <h3 style="color: #f44336;">ERROR</h3>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // History Management
+        function addToHistory(product) {
+            const historyItem = {
+                barcode: product.barcode,
+                name: product.name,
+                timestamp: new Date().toISOString(),
+                is_healthy: product.is_healthy,
+                has_allergen: [...userAllergens].some(a => (product.allergens || []).includes(a))
+            };
+            
+            scanHistory.unshift(historyItem);
+            if (scanHistory.length > 50) scanHistory.pop();
+            saveToLocalStorage();
+        }
+
+        // Upload Image
+        function uploadImage() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    // Use Quagga to decode the uploaded image
+                    Quagga.decodeSingle({
+                        decoder: {
+                            readers: ["ean_reader", "ean_8_reader", "code_128_reader", "code_39_reader", "upc_reader", "upc_e_reader"]
+                        },
+                        locate: true,
+                        src: e.target.result
+                    }, function(result) {
+                        if (result && result.codeResult) {
+                            let barcode = result.codeResult.code;
+                            if (barcode.length === 13 && barcode.startsWith('0')) {
+                                barcode = barcode.substring(1);
+                            }
+                            processBarcode(barcode);
+                        } else {
+                            alert('No barcode found in the image. Please try another image.');
+                        }
+                    });
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            
+            // Reset file input
+            event.target.value = '';
+        }
+
+        // Manual Entry
+        function manualEntry() {
+            const barcode = prompt('Enter Barcode:');
+            if (barcode) {
+                processBarcode(barcode.trim());
+            }
+        }
+
+        // Settings Management
+        function openSettings() {
+            // Load current allergens
+            const allergenList = ['dairy', 'nuts', 'peanuts', 'gluten', 'soy', 'eggs', 'fish', 'shellfish', 'coconut', 'sesame'];
+            allergenList.forEach(allergen => {
+                document.getElementById(`allergen-${allergen}`).checked = userAllergens.has(allergen);
+            });
+            
+            document.getElementById('settingsModal').classList.add('active');
+        }
+
+        function saveSettings() {
+            userAllergens.clear();
+            const allergenList = ['dairy', 'nuts', 'peanuts', 'gluten', 'soy', 'eggs', 'fish', 'shellfish', 'coconut', 'sesame'];
+            
+            allergenList.forEach(allergen => {
+                if (document.getElementById(`allergen-${allergen}`).checked) {
+                    userAllergens.add(allergen);
+                }
+            });
+            
+            saveToLocalStorage();
+            updateStatusBar();
+            closeModal('settingsModal');
+            alert('Allergen preferences saved!');
+        }
+
+        // View History
+        function viewHistory() {
+            const content = document.getElementById('historyContent');
+            
+            if (scanHistory.length === 0) {
+                content.innerHTML = '<p style="text-align: center; color: #666;">No scan history yet!</p>';
+            } else {
+                let html = '';
+                scanHistory.slice(0, 20).forEach(item => {
+                    const date = new Date(item.timestamp).toLocaleString();
+                    const indicator = item.has_allergen ? '[ALLERGEN]' : item.is_healthy ? '[HEALTHY]' : '[WARNING]';
+                    
+                    html += `
+                        <div class="history-item">
+                            <div>
+                                <div class="history-item-name">${indicator} ${item.name || 'Unknown Product'}</div>
+                                <div class="history-item-date">${date}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                content.innerHTML = html;
+            }
+            
+            document.getElementById('historyModal').classList.add('active');
+        }
+
+        // View Statistics
+        function viewStatistics() {
+            const content = document.getElementById('statsContent');
+            const healthyPercentage = totalScans > 0 ? (healthyScans / totalScans * 100).toFixed(1) : 0;
+            
+            content.innerHTML = `
+                <div class="stat-card" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                    <div class="stat-label">Total Scans</div>
+                    <div class="stat-value">${totalScans}</div>
+                </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #4caf50, #2e7d32);">
+                    <div class="stat-label">Healthy Products</div>
+                    <div class="stat-value">${healthyScans}</div>
+                    <div class="stat-label">${healthyPercentage}% of total</div>
+                </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #f44336, #c62828);">
+                    <div class="stat-label">Allergen Warnings</div>
+                    <div class="stat-value">${allergenWarnings}</div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="btn btn-purple" onclick="testLED()">Test LED Effects</button>
+                </div>
+            `;
+            
+            document.getElementById('statsModal').classList.add('active');
+        }
+
+        function testLED() {
+            const colors = ['green', 'red', 'orange', 'blue', 'off'];
+            let index = 0;
+            const interval = setInterval(() => {
+                setLED(colors[index], index === 1);
+                index++;
+                if (index >= colors.length) {
+                    clearInterval(interval);
+                }
+            }, 1000);
+        }
+
+        // Add Product Functions
+        function startAddProductBarcode() {
+            if (!isOnline) {
+                alert('You must be ONLINE to add new products to the database.\n\nPlease connect to the internet and try again.');
+                return;
+            }
+            
+            const barcode = prompt('Enter Barcode:');
+            if (!barcode) return;
+            
+            let cleanBarcode = barcode.trim();
+            if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
+                cleanBarcode = cleanBarcode.substring(1);
+            }
+            
+            openProductForm(cleanBarcode);
+        }
+
+        function startAddProductCamera() {
+            if (!isOnline) {
+                alert('You must be ONLINE to add new products to the database.\n\nPlease connect to the internet and try again.');
+                return;
+            }
+            
+            const mode = confirm('Click OK for Auto Capture (captures immediately on detection)\nClick Cancel for Manual Capture (click button when ready)');
+            captureMode = mode ? 'auto' : 'manual';
+            
+            addingProduct = true;
+            detectedBarcode = null;
+            
+            document.getElementById('captureStatus').textContent = 'Point camera at barcode...';
+            document.getElementById('captureStatus').className = 'capture-status warning';
+            
+            if (captureMode === 'manual') {
+                document.getElementById('captureBtn').style.display = 'block';
+                document.getElementById('captureBtn').disabled = true;
+            }
+            
+            startScanning();
+        }
+
+        function captureProductImage() {
+            if (!detectedBarcode) {
+                alert('No barcode detected yet. Please point camera at barcode.');
+                return;
+            }
+            
+            // Take snapshot
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+            
+            // Convert to data URL for storage
+            capturedImage = canvas.toDataURL('image/jpeg');
+            
+            // Stop scanning
+            stopScanning();
+            
+            // Open product form
+            openProductForm(detectedBarcode);
+        }
+
+        function openProductForm(barcode) {
+            document.getElementById('productFormBarcode').textContent = `Barcode: ${barcode}`;
+            currentBarcode = barcode;
+            
+            // Clear form
+            document.getElementById('productName').value = '';
+            document.getElementById('productBrand').value = '';
+            document.getElementById('productCategory').value = '';
+            document.getElementById('productCalories').value = '0';
+            document.getElementById('productProtein').value = '0';
+            document.getElementById('productCarbs').value = '0';
+            document.getElementById('productSugar').value = '0';
+            document.getElementById('productFats').value = '0';
+            document.getElementById('productSatFats').value = '0';
+            document.getElementById('productFiber').value = '0';
+            document.getElementById('productSodium').value = '0';
+            document.getElementById('productHealthScore').value = '50';
+            
+            // Clear allergen checkboxes
+            const allergenList = ['dairy', 'nuts', 'peanuts', 'gluten', 'soy', 'eggs'];
+            allergenList.forEach(allergen => {
+                document.getElementById(`product-allergen-${allergen}`).checked = false;
+            });
+            
+            document.getElementById('productFormModal').classList.add('active');
+        }
+
+        async function saveProduct() {
+            const productName = document.getElementById('productName').value.trim();
+            if (!productName) {
+                alert('Product name is required!');
+                return;
+            }
+            
+            // Collect allergens
+            const allergenList = ['dairy', 'nuts', 'peanuts', 'gluten', 'soy', 'eggs'];
+            const selectedAllergens = allergenList.filter(a => 
+                document.getElementById(`product-allergen-${a}`).checked
+            );
+            
+            const healthScore = parseInt(document.getElementById('productHealthScore').value) || 50;
+            
+            const productData = {
+                barcode: currentBarcode,
+                name: productName,
+                brand: document.getElementById('productBrand').value.trim(),
+                category: document.getElementById('productCategory').value.trim(),
+                calories: parseFloat(document.getElementById('productCalories').value) || 0,
+                protein: parseFloat(document.getElementById('productProtein').value) || 0,
+                carbs: parseFloat(document.getElementById('productCarbs').value) || 0,
+                sugar: parseFloat(document.getElementById('productSugar').value) || 0,
+                fats: parseFloat(document.getElementById('productFats').value) || 0,
+                saturated_fats: parseFloat(document.getElementById('productSatFats').value) || 0,
+                fiber: parseFloat(document.getElementById('productFiber').value) || 0,
+                sodium: parseFloat(document.getElementById('productSodium').value) || 0,
+                allergens: selectedAllergens,
+                health_score: healthScore,
+                is_healthy: healthScore >= 60 ? 1 : 0
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/add_product.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(productData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Cache the new product
+                    cacheProduct(productData);
+                    
+                    alert(`Product '${productData.name}' added successfully!\n\nBarcode: ${currentBarcode}`);
+                    closeModal('productFormModal');
+                    
+                    // Clear captured image
+                    capturedImage = null;
+                    detectedBarcode = null;
+                } else {
+                    alert(`Failed to add product:\n\n${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`Failed to connect to API:\n\n${error.message}`);
+            }
+        }
+
+        // Modal Management
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Click outside modal to close
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+
+        // Fullscreen Management
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function exitApp() {
+            if (confirm('Are you sure you want to exit?')) {
+                stopScanning();
+                window.close();
+                // If window.close() doesn't work, redirect to about:blank
+                window.location.href = 'about:blank';
+            }
+        }
+    </script>
+</body>
+</html>
