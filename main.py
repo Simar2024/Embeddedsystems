@@ -1221,14 +1221,16 @@ class NutritionScannerApp:
             cb.grid(row=i//3, column=i%3, sticky='w', padx=10, pady=2)
         
         # Health Score
-        tk.Label(form_frame, text="Health Information", 
-                font=("Arial", 14, "bold"), bg="white").pack(pady=(20, 10))
+        tk.Label(
+            form_frame,
+            text="Health Information", 
+            font=("Arial", 14, "bold"), bg="white"
+        ).pack(pady=(20, 10))
         create_field("Health Score (0-100)", "health_score", "50", "number")
         
         def save_product():
             """Save product to database via API or local cache"""
             try:
-                print("DEBUG: Save button clicked!")
                 # Validate required fields
                 if not fields["name"].get().strip():
                     try:
@@ -1240,17 +1242,18 @@ class NutritionScannerApp:
                             pass
                     return
                 
-                print("INFO: Saving product...")
                 try:
                     save_btn.config(state=tk.DISABLED, text="Saving...")
                 except Exception:
                     pass
                 
-                # Collect allergens
-                selected_allergens = [allergen for allergen, var in allergen_vars.items() if var.get()]
+                # Collect allergens as comma-separated string
+                selected_allergens_list = [allergen for allergen, var in allergen_vars.items() if var.get()]
+                selected_allergens = ",".join(selected_allergens_list)
                 
                 # Build product data
                 try:
+                    health_score_val = int(fields["health_score"].get() or 50)
                     product_data = {
                         "barcode": barcode,
                         "name": fields["name"].get().strip(),
@@ -1265,11 +1268,10 @@ class NutritionScannerApp:
                         "fiber": float(fields["fiber"].get() or 0),
                         "sodium": float(fields["sodium"].get() or 0),
                         "allergens": selected_allergens,
-                        "health_score": int(fields["health_score"].get() or 50),
-                        "is_healthy": 1 if int(fields["health_score"].get() or 50) >= 60 else 0
+                        "health_score": health_score_val,
+                        "is_healthy": 1 if health_score_val >= 60 else 0
                     }
-                    print(f"DEBUG: Product data prepared: {product_data['name']} - {barcode}")
-                except ValueError as e:
+                except ValueError:
                     try:
                         messagebox.showerror("Error", "Please enter valid numbers for nutrition values", parent=form_window)
                     finally:
@@ -1279,10 +1281,33 @@ class NutritionScannerApp:
                             pass
                     return
                 
+                # Save directly to SQLite (no API calls)
                 try:
-                    # ALWAYS save to local cache first
-                    self.cache_product(product_data)
-                    print(f"SUCCESS: Product saved to local database")
+                    conn = sqlite3.connect(SQLITE_DB)
+                    cursor = conn.cursor()
+                    
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO products
+                        (barcode, name, brand, category, calories, protein, carbs, sugar, fats,
+                         saturated_fats, fiber, sodium, allergens, health_score, is_healthy, cached_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (
+                        product_data["barcode"], product_data["name"], product_data["brand"], product_data["category"],
+                        product_data["calories"], product_data["protein"], product_data["carbs"], product_data["sugar"],
+                        product_data["fats"], product_data["saturated_fats"], product_data["fiber"], product_data["sodium"],
+                        product_data["allergens"], product_data["health_score"], product_data["is_healthy"]
+                    ))
+                    
+                    # Add to scan_history for stats consistency
+                    product_allergens_set = set(selected_allergens_list)
+                    has_allergen = 1 if bool(self.user_allergens & product_allergens_set) else 0
+                    cursor.execute(
+                        'INSERT INTO scan_history (barcode, is_healthy, has_allergen) VALUES (?, ?, ?)',
+                        (product_data["barcode"], product_data["is_healthy"], has_allergen)
+                    )
+                    
+                    conn.commit()
+                    conn.close()
                 except Exception as e:
                     try:
                         save_btn.config(state=tk.NORMAL, text="Save Product")
@@ -1291,50 +1316,22 @@ class NutritionScannerApp:
                     messagebox.showerror("Error", f"Failed to save locally: {e}", parent=form_window)
                     return
                 
-                # Show success immediately (local save done) and sync to API in background if online
-                success_msg = f"Product '{product_data['name']}' saved successfully!\n\n"
-                success_msg += f"Barcode: {barcode}\n"
-                if self.is_online:
-                    success_msg += "\n(Syncing to API in background)"
-                else:
-                    success_msg += "\n(Saved locally - Offline mode)"
+                # Success message
+                success_msg = f"Product '{product_data['name']}' saved successfully!\n\nBarcode: {barcode}"
                 if image_path:
                     success_msg += f"\nImage saved to: {image_path}"
-
+                
                 try:
                     messagebox.showinfo("Success", success_msg, parent=form_window)
                 finally:
                     form_window.destroy()
                     self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
-
+                
                 # Update statistics
                 self.total_scans = self.get_total_scans()
                 self.healthy_scans = self.get_healthy_scans()
                 self.allergen_warnings = self.get_allergen_warnings()
                 self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
-
-                # Background API sync (non-blocking)
-                def _sync_to_api(pd):
-                    if not self.is_online:
-                        return
-                    try:
-                        response = requests.post(
-                            f"{API_BASE_URL}/add_product.php",
-                            json=pd,
-                            timeout=10
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get('success', False):
-                                print("SUCCESS: Product also saved to online API")
-                            else:
-                                print(f"WARNING: API returned error: {result}")
-                        else:
-                            print(f"WARNING: API HTTP status: {response.status_code}")
-                    except Exception as e:
-                        print(f"WARNING: Could not save to API: {e}")
-
-                threading.Thread(target=_sync_to_api, args=(product_data,), daemon=True).start()
             except Exception as e:
                 try:
                     save_btn.config(state=tk.NORMAL, text="Save Product")
