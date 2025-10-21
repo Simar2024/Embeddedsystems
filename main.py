@@ -1,11 +1,11 @@
 """
 Smart Barcode Nutrition Scanner
-Main Application - Raspberry Pi with SenseHat + Joystick
+Main Application - Raspberry Pi with SenseHat
 Python 3.7+
 
 Run: python3 main.py
 Exit Fullscreen: Press ESC or F11
-Control: Use MOUSE or JOYSTICK (UP/DOWN to navigate, MIDDLE to select)
+Control: Use MOUSE
 """
 
 import tkinter as tk
@@ -60,52 +60,6 @@ CYAN = (0, 255, 255)
 WHITE = (255, 255, 255)
 OFF = (0, 0, 0)
 
-# Arrow patterns for SenseHat
-ARROW_UP = [
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    OFF, OFF, WHITE, WHITE, WHITE, WHITE, OFF, OFF,
-    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
-    WHITE, WHITE, OFF, WHITE, WHITE, OFF, WHITE, WHITE,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
-]
-
-ARROW_DOWN = [
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF,
-    WHITE, WHITE, OFF, WHITE, WHITE, OFF, WHITE, WHITE,
-    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
-    OFF, OFF, WHITE, WHITE, WHITE, WHITE, OFF, OFF,
-    OFF, OFF, OFF, WHITE, WHITE, OFF, OFF, OFF
-]
-
-ARROW_LEFT = [
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, WHITE, OFF, OFF, OFF, OFF, OFF,
-    OFF, WHITE, WHITE, OFF, OFF, OFF, OFF, OFF,
-    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
-    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, OFF,
-    OFF, WHITE, WHITE, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, WHITE, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
-]
-
-ARROW_RIGHT = [
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, WHITE, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, WHITE, WHITE, OFF,
-    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-    OFF, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-    OFF, OFF, OFF, OFF, OFF, WHITE, WHITE, OFF,
-    OFF, OFF, OFF, OFF, OFF, WHITE, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
-]
-
-
 class NutritionScannerApp:
     def __init__(self, root):
         self.root = root
@@ -139,13 +93,6 @@ class NutritionScannerApp:
         self.detected_barcode = None
         self.latest_frame = None
         
-        # Joystick variables
-        self.joystick_thread = None
-        self.joystick_running = False
-        self.joystick_enabled = True
-        self.current_menu_index = 0
-        self.menu_items = []
-        
         # Statistics
         self.total_scans = self.get_total_scans()
         self.healthy_scans = self.get_healthy_scans()
@@ -154,17 +101,10 @@ class NutritionScannerApp:
         # Create GUI
         self.create_gui()
         
-        # Start joystick listener if enabled
-        if SENSEHAT_AVAILABLE and self.joystick_enabled:
-            self.start_joystick_listener()
-            self.show_arrow_pattern(ARROW_UP)
-        
         print("SUCCESS: Application started successfully")
         print("INFO: Mouse control is always enabled")
         if SENSEHAT_AVAILABLE:
             print("SUCCESS: SenseHat LED matrix ready")
-            if self.joystick_enabled:
-                print("SUCCESS: Joystick navigation enabled - UP/DOWN to navigate, MIDDLE to select")
     
     def init_sqlite_db(self):
         """Initialize SQLite database for offline cache"""
@@ -278,32 +218,6 @@ class NutritionScannerApp:
         except:
             return False
     
-    def toggle_joystick(self):
-        """Toggle joystick on/off"""
-        if not SENSEHAT_AVAILABLE:
-            messagebox.showinfo("Joystick", "SenseHat not available - joystick cannot be used")
-            return
-        
-        self.joystick_enabled = not self.joystick_enabled
-        
-        if self.joystick_enabled:
-            self.start_joystick_listener()
-            self.joystick_toggle_btn.config(text="Joystick: ON", bg="#4caf50")
-            messagebox.showinfo("Joystick", "Joystick control ENABLED")
-            self.show_arrow_pattern(ARROW_UP)
-        else:
-            self.joystick_running = False
-            self.joystick_toggle_btn.config(text="Joystick: OFF", bg="#757575")
-            messagebox.showinfo("Joystick", "Joystick control DISABLED\nMouse control still active")
-            if SENSEHAT_AVAILABLE:
-                sense.clear()
-    
-    def show_arrow_pattern(self, pattern):
-        """Show arrow pattern on SenseHat"""
-        if not SENSEHAT_AVAILABLE or not self.joystick_enabled:
-            return
-        sense.set_pixels(pattern)
-    
     def set_led_color(self, color, pattern='solid'):
         """Set SenseHat LED color"""
         if not SENSEHAT_AVAILABLE:
@@ -396,78 +310,8 @@ class NutritionScannerApp:
         else:
             self.capture_btn.config(state=tk.DISABLED, bg="#757575")
     
-    def start_joystick_listener(self):
-        """Start listening to joystick events"""
-        if not SENSEHAT_AVAILABLE or not self.joystick_enabled:
-            return
-        
-        self.joystick_running = True
-        self.joystick_thread = threading.Thread(target=self._joystick_loop, daemon=True)
-        self.joystick_thread.start()
-    
-    def _joystick_loop(self):
-        """Joystick event loop - runs in separate thread"""
-        while self.joystick_running and self.joystick_enabled:
-            try:
-                for event in sense.stick.get_events():
-                    if event.action == "pressed":
-                        if event.direction == "up":
-                            self.root.after(0, self.joystick_up)
-                        elif event.direction == "down":
-                            self.root.after(0, self.joystick_down)
-                        elif event.direction == "left":
-                            self.root.after(0, self.joystick_left)
-                        elif event.direction == "right":
-                            self.root.after(0, self.joystick_right)
-                        elif event.direction == "middle":
-                            self.root.after(0, self.joystick_select)
-            except:
-                pass
-            time.sleep(0.05)
-    
-    def joystick_up(self):
-        """Handle joystick UP - navigate menu"""
-        if len(self.menu_items) > 0:
-            self.current_menu_index = (self.current_menu_index - 1) % len(self.menu_items)
-            self.highlight_menu_item()
-            self.show_arrow_pattern(ARROW_UP)
-    
-    def joystick_down(self):
-        """Handle joystick DOWN - navigate menu"""
-        if len(self.menu_items) > 0:
-            self.current_menu_index = (self.current_menu_index + 1) % len(self.menu_items)
-            self.highlight_menu_item()
-            self.show_arrow_pattern(ARROW_DOWN)
-    
-    def joystick_left(self):
-        """Handle joystick LEFT"""
-        self.show_arrow_pattern(ARROW_LEFT)
-        self.refresh_connection()
-    
-    def joystick_right(self):
-        """Handle joystick RIGHT"""
-        self.show_arrow_pattern(ARROW_RIGHT)
-        self.open_settings()
-    
-    def joystick_select(self):
-        """Handle joystick MIDDLE - select current menu item"""
-        if len(self.menu_items) > 0:
-            selected_button = self.menu_items[self.current_menu_index]
-            selected_button.invoke()
-            self.set_led_color(GREEN, 'pulse')
-    
-    def highlight_menu_item(self):
-        """Highlight current menu item"""
-        for i, btn in enumerate(self.menu_items):
-            if i == self.current_menu_index:
-                btn.configure(relief=tk.RAISED, borderwidth=4, bg="#2196f3")
-            else:
-                original_bg = self.menu_original_bg[i] if hasattr(self, 'menu_original_bg') and i < len(self.menu_original_bg) else btn.cget("bg")
-                btn.configure(relief=tk.FLAT, borderwidth=1, bg=original_bg)
-    
     def quit_app(self):
         """Quit application and cleanup"""
-        self.joystick_running = False
         self.led_animation_running = False
         if SENSEHAT_AVAILABLE:
             sense.clear()
@@ -490,29 +334,6 @@ class NutritionScannerApp:
             fg="white"
         )
         title_label.pack(side=tk.LEFT, padx=20, pady=15)
-        
-        control_label = tk.Label(
-            title_frame,
-            text="Control: Mouse (Always) | Joystick (Toggle)",
-            font=("Arial", 10),
-            bg="#4a90e2",
-            fg="white"
-        )
-        control_label.pack(side=tk.LEFT, padx=10, pady=15)
-        
-        if SENSEHAT_AVAILABLE:
-            self.joystick_toggle_btn = tk.Button(
-                title_frame,
-                text="Joystick: ON" if self.joystick_enabled else "Joystick: OFF",
-                command=self.toggle_joystick,
-                bg="#4caf50" if self.joystick_enabled else "#757575",
-                fg="white",
-                font=("Arial", 11, "bold"),
-                relief=tk.FLAT,
-                padx=15,
-                pady=8
-            )
-            self.joystick_toggle_btn.pack(side=tk.LEFT, padx=10, pady=15)
         
         exit_btn = tk.Button(
             title_frame,
@@ -565,7 +386,7 @@ class NutritionScannerApp:
         if SENSEHAT_AVAILABLE:
             led_status = tk.Label(
                 status_frame,
-                text="LED Ready | Joystick Active" if self.joystick_enabled else "LED Ready",
+                text="LED Ready",
                 font=("Arial", 11),
                 bg="#e8e8e8",
                 fg="#4caf50"
@@ -651,7 +472,6 @@ class NutritionScannerApp:
             cursor="hand2"
         )
         upload_btn.grid(row=0, column=0, padx=5)
-        self.menu_items.append(upload_btn)
         
         manual_btn = tk.Button(
             btn_frame,
@@ -665,7 +485,6 @@ class NutritionScannerApp:
             cursor="hand2"
         )
         manual_btn.grid(row=0, column=1, padx=5)
-        self.menu_items.append(manual_btn)
         
         history_btn = tk.Button(
             btn_frame,
@@ -679,7 +498,6 @@ class NutritionScannerApp:
             cursor="hand2"
         )
         history_btn.grid(row=1, column=0, padx=5, pady=5)
-        self.menu_items.append(history_btn)
         
         stats_btn = tk.Button(
             btn_frame,
@@ -693,7 +511,6 @@ class NutritionScannerApp:
             cursor="hand2"
         )
         stats_btn.grid(row=1, column=1, padx=5, pady=5)
-        self.menu_items.append(stats_btn)
         
         # Add Product buttons (Barcode/Image)
         add_product_barcode_btn = tk.Button(
@@ -708,7 +525,6 @@ class NutritionScannerApp:
             cursor="hand2"
         )
         add_product_barcode_btn.grid(row=2, column=0, padx=5, pady=5)
-        self.menu_items.append(add_product_barcode_btn)
 
         add_product_image_btn = tk.Button(
             btn_frame,
@@ -722,7 +538,6 @@ class NutritionScannerApp:
             cursor="hand2"
         )
         add_product_image_btn.grid(row=2, column=1, padx=5, pady=5)
-        self.menu_items.append(add_product_image_btn)
         
         # Right panel - Results
         right_frame = tk.Frame(main_frame, bg="white", relief=tk.RAISED, bd=2)
@@ -753,12 +568,6 @@ class NutritionScannerApp:
         scrollbar.pack(side="right", fill="y")
         
         self.show_welcome_message()
-        
-        # Highlight first menu item
-        self.current_menu_index = 0
-        self.menu_original_bg = [btn.cget("bg") for btn in self.menu_items]
-        if self.menu_items:
-            self.highlight_menu_item()
     
     def show_welcome_message(self):
         """Show welcome message"""
@@ -767,8 +576,6 @@ class NutritionScannerApp:
         
         welcome_text = "Welcome!\n\nScan a barcode to get started\n\nSet your allergens in Settings"
         welcome_text += "\n\nMouse control is always enabled"
-        if SENSEHAT_AVAILABLE:
-            welcome_text += "\nToggle joystick control in title bar"
         
         welcome = tk.Label(
             self.results_frame,
