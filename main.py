@@ -311,6 +311,17 @@ class NutritionScannerApp:
         else:
             self.capture_btn.config(state=tk.DISABLED, bg="#757575")
     
+    def stop_camera(self):
+        """Stop any running camera operations"""
+        self.scanning = False
+        self.adding_product = False
+        if self.camera:
+            self.camera.release()
+            self.camera = None
+        self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
+        if hasattr(self, 'capture_btn'):
+            self.capture_btn.pack_forget()
+    
     def quit_app(self):
         """Quit application and cleanup"""
         self.led_animation_running = False
@@ -605,6 +616,7 @@ class NutritionScannerApp:
     
     def open_settings(self):
         """Open allergen settings dialog"""
+        self.stop_camera()
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Settings")
         settings_window.geometry("500x650")
@@ -873,42 +885,31 @@ class NutritionScannerApp:
             original_frame = frame.copy()
             self.latest_frame = original_frame
             
-            # Try multiple detection methods
-            barcodes = []
-            # Try 1: Original frame
+            # Multiple detection attempts
             barcodes = pyzbar.decode(frame)
 
             if not barcodes:
-                # Try 2: Grayscale
+                # Try grayscale
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 barcodes = pyzbar.decode(gray)
-
+                
             if not barcodes:
-                # Try 3: Binary threshold
-                _, binary = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
-                barcodes = pyzbar.decode(binary)
-
+                # Try with brightness adjustment
+                bright = cv2.convertScaleAbs(frame, alpha=1.5, beta=50)
+                barcodes = pyzbar.decode(bright)
+                
             if not barcodes:
-                # Try 4: Adaptive threshold
-                adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                                cv2.THRESH_BINARY, 11, 2)
-                barcodes = pyzbar.decode(adaptive)
+                # Try with contrast adjustment (CLAHE)
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                enhanced = clahe.apply(gray)
+                barcodes = pyzbar.decode(enhanced)
 
-            if not barcodes:
-                # Try 5: Sharpened image
-                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-                sharpened = cv2.filter2D(gray, -1, kernel)
-                barcodes = pyzbar.decode(sharpened)
-
-            # Add visual guide on frame
+            # Add visual guide
             height, width = frame.shape[:2]
-            cv2.rectangle(frame, (50, 50), (width-50, height-50), (0, 255, 0), 2)
-            cv2.putText(frame, "Position barcode within green box", (60, 40),
+            cv2.rectangle(frame, (width//4, height//4), (3*width//4, 3*height//4), (0, 255, 0), 2)
+            cv2.putText(frame, "Align barcode in box", (width//4, height//4 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-            # Debug output
-            if not barcodes and no_barcode_count % 60 == 0:
-                print(f"Scanning... Frame {no_barcode_count} - Try moving barcode closer/farther")
             
             if barcodes:
                 barcode = barcodes[0]
@@ -1055,7 +1056,7 @@ class NutritionScannerApp:
         
         form_window = tk.Toplevel(self.root)
         form_window.title("Add New Product")
-        form_window.geometry("600x800")
+        form_window.geometry("650x850")
         form_window.configure(bg="white")
         form_window.grab_set()
         
@@ -1171,6 +1172,7 @@ class NutritionScannerApp:
         def save_product():
             """Save product to database via API or local cache"""
             try:
+                print("DEBUG: Save button clicked!")
                 # Validate required fields
                 if not fields["name"].get().strip():
                     try:
@@ -1316,6 +1318,7 @@ class NutritionScannerApp:
     
     def upload_image(self):
         """Upload image and scan for barcode"""
+        self.stop_camera()
         print("INFO: Opening file dialog...")
         file_path = filedialog.askopenfilename(
             title="Select Barcode Image",
@@ -1377,6 +1380,7 @@ class NutritionScannerApp:
     
     def manual_entry(self):
         """Manual barcode entry to retrieve product information"""
+        self.stop_camera()
         dialog = tk.Toplevel(self.root)
         dialog.title("Manual Barcode Entry")
         dialog.geometry("400x180")
@@ -1419,6 +1423,7 @@ class NutritionScannerApp:
     
     def view_history(self):
         """View scan history"""
+        self.stop_camera()
         history_window = tk.Toplevel(self.root)
         history_window.title("Scan History")
         history_window.geometry("700x600")
@@ -1519,6 +1524,7 @@ class NutritionScannerApp:
     
     def view_statistics(self):
         """View scanning statistics"""
+        self.stop_camera()
         stats_window = tk.Toplevel(self.root)
         stats_window.title("Statistics")
         stats_window.geometry("600x550")
