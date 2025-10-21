@@ -1059,17 +1059,21 @@ class NutritionScannerApp:
         form_window.configure(bg="white")
         form_window.grab_set()
         
-        # Scrollable form
         canvas = tk.Canvas(form_window, bg="white")
         scrollbar = ttk.Scrollbar(form_window, orient="vertical", command=canvas.yview)
         form_frame = tk.Frame(canvas, bg="white")
         
         form_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=form_frame, anchor="nw")
+        frame_window = canvas.create_window((0, 0), window=form_frame, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(frame_window, width=e.width))
         canvas.configure(yscrollcommand=scrollbar.set)
         
         canvas.pack(side="left", fill="both", expand=True, padx=20, pady=20)
         scrollbar.pack(side="right", fill="y")
+        
+        form_window.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        form_window.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+        form_window.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
         
         # Title
         tk.Label(
