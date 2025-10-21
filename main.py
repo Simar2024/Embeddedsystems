@@ -322,6 +322,24 @@ class NutritionScannerApp:
         if hasattr(self, 'capture_btn'):
             self.capture_btn.pack_forget()
     
+    def test_pyzbar(self):
+        """Test if pyzbar is working"""
+        import numpy as np
+        test_img = np.ones((100, 200, 3), dtype=np.uint8) * 255
+        try:
+            result = pyzbar.decode(test_img)
+            print(f"Pyzbar test: Working! (returned {len(result)} barcodes)")
+            return True
+        except Exception as e:
+            print(f"Pyzbar test: FAILED! Error: {e}")
+            messagebox.showerror(
+                "Pyzbar Error",
+                "Barcode library not working!\n"
+                "Try: pip install pyzbar\n"
+                "On Linux: sudo apt-get install libzbar0"
+            )
+            return False
+    
     def quit_app(self):
         """Quit application and cleanup"""
         self.led_animation_running = False
@@ -825,6 +843,9 @@ class NutritionScannerApp:
     
     def add_product_camera_loop(self, auto_capture=False):
         """Camera loop for adding products - supports both auto and manual capture"""
+        # Verify pyzbar is operational before proceeding
+        if not self.test_pyzbar():
+            return
         # Try to open camera with multiple methods
         chosen_idx = None
         backends = [None]
@@ -885,38 +906,70 @@ class NutritionScannerApp:
             original_frame = frame.copy()
             self.latest_frame = original_frame
             
-            # Multiple detection attempts
+            # Try multiple methods with debugging
             barcodes = pyzbar.decode(frame)
+            print(f"Attempt 1 (original): {len(barcodes) if barcodes else 0} barcodes")
 
+            gray = None
             if not barcodes:
-                # Try grayscale
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 barcodes = pyzbar.decode(gray)
-                
+                print(f"Attempt 2 (grayscale): {len(barcodes) if barcodes else 0} barcodes")
+
             if not barcodes:
-                # Try with brightness adjustment
-                bright = cv2.convertScaleAbs(frame, alpha=1.5, beta=50)
-                barcodes = pyzbar.decode(bright)
-                
+                # Try with different threshold values
+                if gray is None:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                for thresh_val in [100, 127, 150]:
+                    _, binary = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
+                    barcodes = pyzbar.decode(binary)
+                    if barcodes:
+                        print(f"Attempt 3 (threshold {thresh_val}): {len(barcodes)} barcodes")
+                        break
+
             if not barcodes:
-                # Try with contrast adjustment (CLAHE)
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-                enhanced = clahe.apply(gray)
-                barcodes = pyzbar.decode(enhanced)
+                # Try inverting the image
+                if gray is None:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                inverted = cv2.bitwise_not(gray)
+                barcodes = pyzbar.decode(inverted)
+                print(f"Attempt 4 (inverted): {len(barcodes) if barcodes else 0} barcodes")
 
             # Add visual guide
             height, width = frame.shape[:2]
             cv2.rectangle(frame, (width//4, height//4), (3*width//4, 3*height//4), (0, 255, 0), 2)
             cv2.putText(frame, "Align barcode in box", (width//4, height//4 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            
+
+            # Debug: Check what pyzbar is actually returning
+            if barcodes:
+                print(f"DEBUG: Found {len(barcodes)} barcode(s)")
+                for bc in barcodes:
+                    try:
+                        print(f"  Type: {getattr(bc, 'type', 'UNKNOWN')}, Data: {getattr(bc, 'data', None)}, Rect: {getattr(bc, 'rect', None)}")
+                    except Exception as _e:
+                        print(f"  WARN: Could not introspect barcode object: {_e}")
+
             if barcodes:
                 barcode = barcodes[0]
-                barcode_data = barcode.data.decode('utf-8')
-                barcode_type = barcode.type
-                
-                print(f"INFO: Detected barcode: {barcode_data} (Type: {barcode_type})")
+                try:
+                    # Handle different encodings
+                    if hasattr(barcode, 'data'):
+                        if isinstance(barcode.data, bytes):
+                            barcode_data = barcode.data.decode('utf-8', errors='ignore')
+                        else:
+                            barcode_data = str(barcode.data)
+                    else:
+                        barcode_data = str(barcode)
+                    barcode_type = barcode.type if hasattr(barcode, 'type') else "UNKNOWN"
+                    print(f"SUCCESS: Decoded barcode: {barcode_data} (Type: {barcode_type})")
+                    barcode_data = barcode_data.strip()
+                    if not barcode_data:
+                        print("ERROR: Empty barcode data")
+                        continue
+                except Exception as e:
+                    print(f"ERROR decoding barcode: {e}")
+                    continue
                 
                 # Remove leading zero for UPC-A conversion if needed
                 if len(barcode_data) == 13 and barcode_data.isdigit() and barcode_data.startswith('0'):
@@ -950,10 +1003,13 @@ class NutritionScannerApp:
                     # Open the add product form
                     self.root.after(0, self.open_add_product_form, barcode_data, image_path)
                 else:
-                    # Manual mode - enable capture button
-                    self.root.after(0, self._set_capture_status_safe, 
-                                   f"Barcode detected: {barcode_data}", "green")
-                    self.root.after(0, self._enable_capture_button, True)
+                    # Manual mode - enable capture button and ensure visibility
+                    self.root.after(0, lambda: self.capture_status_label.config(
+                        text=f"Barcode detected: {barcode_data}", fg="green"))
+                    self.root.after(0, lambda: self.capture_btn.config(
+                        state=tk.NORMAL, bg="#4caf50", text=f"CAPTURE {barcode_data}"))
+                    if not self.capture_btn.winfo_ismapped():
+                        self.root.after(0, lambda: self.capture_btn.pack(pady=10))
                 
                 no_barcode_count = 0
             else:
