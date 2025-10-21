@@ -21,6 +21,7 @@ from PIL import Image, ImageTk
 import os
 import sys
 import time
+import numpy as np
 
 # Try to import SenseHat (only works on Raspberry Pi)
 try:
@@ -851,8 +852,14 @@ class NutritionScannerApp:
             return
         
         print(f"SUCCESS: Opened camera at index {chosen_idx}")
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Try higher resolution for better barcode detection
+        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        # Enable autofocus if available
+        self.camera.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+        # Set buffer size to 1 for real-time capture
+        self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        print(f"Camera settings: {self.camera.get(3)}x{self.camera.get(4)}")
         
         captured = False
         no_barcode_count = 0
@@ -866,7 +873,42 @@ class NutritionScannerApp:
             original_frame = frame.copy()
             self.latest_frame = original_frame
             
+            # Try multiple detection methods
+            barcodes = []
+            # Try 1: Original frame
             barcodes = pyzbar.decode(frame)
+
+            if not barcodes:
+                # Try 2: Grayscale
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                barcodes = pyzbar.decode(gray)
+
+            if not barcodes:
+                # Try 3: Binary threshold
+                _, binary = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
+                barcodes = pyzbar.decode(binary)
+
+            if not barcodes:
+                # Try 4: Adaptive threshold
+                adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                                cv2.THRESH_BINARY, 11, 2)
+                barcodes = pyzbar.decode(adaptive)
+
+            if not barcodes:
+                # Try 5: Sharpened image
+                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+                sharpened = cv2.filter2D(gray, -1, kernel)
+                barcodes = pyzbar.decode(sharpened)
+
+            # Add visual guide on frame
+            height, width = frame.shape[:2]
+            cv2.rectangle(frame, (50, 50), (width-50, height-50), (0, 255, 0), 2)
+            cv2.putText(frame, "Position barcode within green box", (60, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+            # Debug output
+            if not barcodes and no_barcode_count % 60 == 0:
+                print(f"Scanning... Frame {no_barcode_count} - Try moving barcode closer/farther")
             
             if barcodes:
                 barcode = barcodes[0]
@@ -1123,11 +1165,13 @@ class NutritionScannerApp:
         create_field("Health Score (0-100)", "health_score", "50", "number")
         
         def save_product():
-            """Save product to database via API"""
+            """Save product to database via API or local cache"""
             # Validate required fields
             if not fields["name"].get().strip():
                 messagebox.showerror("Error", "Product name is required!")
                 return
+            
+            print("INFO: Saving product...")
             
             # Collect allergens
             selected_allergens = [allergen for allergen, var in allergen_vars.items() if var.get()]
@@ -1137,8 +1181,8 @@ class NutritionScannerApp:
                 product_data = {
                     "barcode": barcode,
                     "name": fields["name"].get().strip(),
-                    "brand": fields["brand"].get().strip(),
-                    "category": fields["category"].get().strip(),
+                    "brand": fields["brand"].get().strip() or "",
+                    "category": fields["category"].get().strip() or "",
                     "calories": float(fields["calories"].get() or 0),
                     "protein": float(fields["protein"].get() or 0),
                     "carbs": float(fields["carbs"].get() or 0),
@@ -1151,43 +1195,52 @@ class NutritionScannerApp:
                     "health_score": int(fields["health_score"].get() or 50),
                     "is_healthy": 1 if int(fields["health_score"].get() or 50) >= 60 else 0
                 }
+                print(f"DEBUG: Product data prepared: {product_data['name']} - {barcode}")
             except ValueError as e:
                 messagebox.showerror("Error", "Please enter valid numbers for nutrition values")
                 return
             
-            # Send to API
-            try:
-                response = requests.post(
-                    f"{API_BASE_URL}/add_product.php",
-                    json=product_data,
-                    timeout=10
-                )
-                
-                result = response.json()
-                
-                if result.get('success'):
-                    # Also cache locally
-                    self.cache_product(product_data)
-                    
-                    success_msg = f"Product '{product_data['name']}' added successfully!\n\n"
-                    success_msg += f"Barcode: {barcode}\n"
-                    if image_path:
-                        success_msg += f"Image saved to: {image_path}"
-                    
-                    messagebox.showinfo("Success", success_msg)
-                    form_window.destroy()
-                    self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
-                    
-                    # Update statistics
-                    self.total_scans = self.get_total_scans()
-                    self.healthy_scans = self.get_healthy_scans()
-                    self.allergen_warnings = self.get_allergen_warnings()
-                    self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
-                else:
-                    messagebox.showerror("Error", f"Failed to add product:\n\n{result.get('error')}")
+            # ALWAYS save to local cache first
+            self.cache_product(product_data)
+            print(f"SUCCESS: Product saved to local database")
             
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to connect to API:\n\n{str(e)}")
+            # Try to save to API if online
+            api_success = False
+            if self.is_online:
+                try:
+                    response = requests.post(
+                        f"{API_BASE_URL}/add_product.php",
+                        json=product_data,
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        api_success = result.get('success', False)
+                        if api_success:
+                            print("SUCCESS: Product also saved to online API")
+                except Exception as e:
+                    print(f"WARNING: Could not save to API: {e}")
+            
+            # Show success (product is saved locally at minimum)
+            success_msg = f"Product '{product_data['name']}' saved successfully!\n\n"
+            success_msg += f"Barcode: {barcode}\n"
+            if not api_success and self.is_online:
+                success_msg += "\n(Saved locally - API unavailable)"
+            elif not self.is_online:
+                success_msg += "\n(Saved locally - Offline mode)"
+            
+            if image_path:
+                success_msg += f"\nImage saved to: {image_path}"
+            
+            messagebox.showinfo("Success", success_msg)
+            form_window.destroy()
+            self.camera_label.config(image='', text="Camera Off", bg="black", fg="white")
+            
+            # Update statistics
+            self.total_scans = self.get_total_scans()
+            self.healthy_scans = self.get_healthy_scans()
+            self.allergen_warnings = self.get_allergen_warnings()
+            self.scan_counter_label.config(text=f"Total Scans: {self.total_scans}")
         
         # Buttons
         button_frame = tk.Frame(form_frame, bg="white")
